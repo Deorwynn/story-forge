@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Project } from '../../types/project';
+import { invoke } from '@tauri-apps/api/core';
 
 export default function NewProjectForm({
   onConfirm,
@@ -10,26 +11,45 @@ export default function NewProjectForm({
 }) {
   const [name, setName] = useState('');
   const [type, setType] = useState<'standalone' | 'series'>('standalone');
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onConfirm({
+    setIsSaving(true);
+
+    const newProject: Project = {
       id: crypto.randomUUID(),
       name: name || 'Untitled Story',
       type: type,
       expectedBookCount: type === 'series' ? 3 : 1,
       createdAt: Date.now(),
       lastOpened: Date.now(),
-    });
+    };
+
+    try {
+      await invoke('create_project', {
+        id: newProject.id,
+        name: newProject.name,
+        projectType: newProject.type,
+        bookCount: newProject.expectedBookCount,
+      });
+
+      onConfirm(newProject);
+    } catch (error) {
+      console.error('Database error:', error);
+      alert('Failed to save project to database.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <form
         onSubmit={handleSubmit}
-        className="bg-[#1a1a1e] border border-slate-800 p-8 rounded-2xl w-full max-w-md shadow-2xl"
+        className="bg-[#1a1a1e] border border-slate-800 p-8 rounded-2xl w-full max-w-md shadow-2xl text-white"
       >
-        <h2 className="text-2xl font-bold text-white mb-6">
+        <h2 className="text-2xl font-bold mb-6 italic text-[#d8b4fe]">
           Forge a New Story
         </h2>
 
@@ -74,15 +94,17 @@ export default function NewProjectForm({
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 px-4 py-3 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            disabled={isSaving}
+            className="flex-1 px-4 py-3 text-slate-400 hover:text-white transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-500/20 cursor-pointer"
+            disabled={isSaving}
+            className="flex-1 bg-[#9333ea] hover:bg-[#a855f7] text-white font-bold py-3 rounded-xl shadow-lg disabled:bg-slate-700 cursor-pointer"
           >
-            Create Project
+            {isSaving ? 'Forging...' : 'Create Project'}
           </button>
         </div>
       </form>

@@ -4,7 +4,7 @@ import { Project } from './types/project';
 import TopNav from './components/layout/TopNav';
 import './App.css';
 
-import HomeView from './components/HomeView';
+import HomeView from './components/projects/HomeView';
 import CharacterTab from './components/CharacterTab';
 import Sidebar from './components/layout/Sidebar';
 
