@@ -1,0 +1,11 @@
+@import 'tailwindcss';
+
+:root {
+  background-color: #f8f9fc; /* The light grey-blue background from your Figma */
+  color: #1a1a1e;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+}
