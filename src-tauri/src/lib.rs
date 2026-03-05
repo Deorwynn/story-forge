@@ -1,5 +1,6 @@
 use rusqlite::Connection;
 use tauri::Manager;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(serde::Serialize)]
 struct BookRow {
@@ -9,13 +10,16 @@ struct BookRow {
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ProjectRow {
-    id: String,
+id: String,
     name: String,
     project_type: String,
     book_count: i32,
     genre: String,
     description: String,
+    created_at: i64,
+    updated_at: i64,
     books: Vec<BookRow>,
 }
 
@@ -148,11 +152,16 @@ async fn create_project(
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
     let _ : String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0)).map_err(|e| e.to_string())?;
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e: std::time::SystemTimeError| e.to_string())?
+        .as_secs() as i64;
     
     conn.execute(
-        "INSERT INTO projects (id, name, type, book_count, created_at, genre, description) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        (id, name, project_type, book_count, 0, genre, description),
+        "INSERT INTO projects (id, name, type, book_count, created_at, updated_at, genre, description) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        (id, name, project_type, book_count, now, now, genre, description),
     ).map_err(|e| e.to_string())?;
     
     Ok(())
@@ -187,7 +196,7 @@ async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, S
     let _ : String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0)).map_err(|e| e.to_string())?;
 
     // Get all projects
-    let mut stmt = conn.prepare("SELECT id, name, type, book_count, genre, description FROM projects WHERE deleted_at IS NULL")
+let mut stmt = conn.prepare("SELECT id, name, type, book_count, genre, description, created_at, updated_at FROM projects WHERE deleted_at IS NULL")
     .map_err(|e| e.to_string())?;
     let project_rows = stmt.query_map([], |row| {
         let project_id: String = row.get(0)?;
@@ -216,6 +225,8 @@ async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, S
             book_count: row.get(3)?,
             genre: row.get(4)?,
             description: row.get(5)?,
+            created_at: row.get::<_, Option<i64>>(6)?.unwrap_or(0), 
+            updated_at: row.get::<_, Option<i64>>(7)?.unwrap_or(0),
             books,
         })
     }).map_err(|e| e.to_string())?;
