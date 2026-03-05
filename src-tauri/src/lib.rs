@@ -1,8 +1,8 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 use tauri::Manager;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct BookRow {
     id: String,
     title: String,
@@ -193,33 +193,28 @@ async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, S
     let path = get_db_path(&app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
-    let _ : String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0)).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT 
+            p.id, p.name, p.type, p.book_count, p.genre, p.description, p.created_at, p.updated_at,
+            COALESCE(
+                (SELECT json_group_array(
+                    json_object('id', b.id, 'title', b.title, 'order_index', b.order_index)
+                ) FROM books b WHERE b.project_id = p.id),
+                '[]'
+            ) as books_json
+         FROM projects p
+         WHERE p.deleted_at IS NULL
+         ORDER BY p.updated_at DESC"
+    ).map_err(|e| e.to_string())?;
 
-    // Get all projects
-let mut stmt = conn.prepare("SELECT id, name, type, book_count, genre, description, created_at, updated_at FROM projects WHERE deleted_at IS NULL")
-    .map_err(|e| e.to_string())?;
     let project_rows = stmt.query_map([], |row| {
-        let project_id: String = row.get(0)?;
-        
-        // For each project, fetch its associated books
-        let mut book_stmt = conn.prepare("SELECT id, title, order_index FROM books WHERE project_id = ?1 ORDER BY order_index ASC")
+        // Parse the JSON string back into our BookRow vector
+        let books_json: String = row.get(8)?;
+        let books: Vec<BookRow> = serde_json::from_str(&books_json)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-        
-        let book_iter = book_stmt.query_map([&project_id], |b_row| {
-            Ok(BookRow {
-                id: b_row.get(0)?,
-                title: b_row.get(1)?,
-                order_index: b_row.get(2)?,
-            })
-        }).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-
-        let mut books = Vec::new();
-        for book in book_iter {
-            books.push(book?);
-        }
 
         Ok(ProjectRow {
-            id: project_id,
+            id: row.get(0)?,
             name: row.get(1)?,
             project_type: row.get(2)?,
             book_count: row.get(3)?,
@@ -243,12 +238,15 @@ let mut stmt = conn.prepare("SELECT id, name, type, book_count, genre, descripti
 async fn delete_project(app_handle: tauri::AppHandle, id: String) -> Result<(), String> {
     let path = get_db_path(&app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
-
-    let _ : String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0)).map_err(|e| e.to_string())?;
-
+    
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs() as i64;
+    
     conn.execute(
-        "UPDATE projects SET deleted_at = strftime('%s', 'now') WHERE id = ?1",
-        [id],
+        "UPDATE projects SET deleted_at = ?1 WHERE id = ?2",
+        params![now, id],
     ).map_err(|e| e.to_string())?;
 
     Ok(())
