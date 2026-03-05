@@ -5,6 +5,7 @@ import { mapRawProject } from '../../utils/projectMapper';
 import NewProjectForm from './NewProjectForm';
 import ProjectCard from './ProjectCard';
 import Button from '../shared/Button';
+import ConfirmModal from '../shared/ConfirmModal';
 
 /**
  * HomeView Component
@@ -20,6 +21,7 @@ export default function HomeView({
   const [isCreating, setIsCreating] = useState(false);
   const [existingProjects, setExistingProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   // --- Data Fetching & Sync ---
   useEffect(() => {
@@ -44,18 +46,27 @@ export default function HomeView({
     }; // Cleanup to prevent memory leaks
   }, []);
 
-  // --- Handlers ---
-  const handleDelete = (id: string) => {
-    // Logic will be implemented in future PR
-    console.log(`[HomeView] Action: Delete Project ${id}`);
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+
+    try {
+      await invoke('delete_project', { id: deleteTarget });
+      setExistingProjects((prev) => prev.filter((p) => p.id !== deleteTarget));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeleteTarget(null); // Close modal
+    }
   };
+
+  // --- Handlers ---
 
   const handleEdit = (p: Project) => {
     // Logic will be implemented in future PR
     console.log(`[HomeView] Action: Edit Project ${p.name}`);
   };
 
-  // --- Sub-Components (Extracted for Clarity) ---
+  // --- Sub-Components ---
   const LoadingOverlay = () => (
     <div className="h-screen w-full bg-[#f8fafc] flex flex-col items-center justify-center text-slate-800">
       <div className="w-12 h-12 border-4 border-[#e9d5ff] border-t-[#9333ea] rounded-full animate-spin mb-4" />
@@ -104,7 +115,7 @@ export default function HomeView({
                 key={project.id}
                 project={project}
                 onSelect={onCreateProject}
-                onDelete={handleDelete}
+                onDelete={(id) => setDeleteTarget(id)}
                 onEdit={handleEdit}
               />
             ))}
@@ -125,6 +136,16 @@ export default function HomeView({
           onCancel={() => setIsCreating(false)}
         />
       )}
+
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title="Remove Story?"
+        message="This will move your project to the trash. You can recover it later from settings."
+        confirmLabel="Move to Trash"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
