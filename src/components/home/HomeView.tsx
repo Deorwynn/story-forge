@@ -14,8 +14,10 @@ import ConfirmModal from '../shared/ConfirmModal';
  */
 export default function HomeView({
   onCreateProject,
+  onViewTrash,
 }: {
   onCreateProject: (p: Project) => void;
+  onViewTrash: () => void;
 }) {
   // --- State Management ---
   const [isCreating, setIsCreating] = useState(false);
@@ -95,6 +97,16 @@ export default function HomeView({
 
   return (
     <div className="min-h-screen w-full bg-[#f8fafc] flex flex-col items-center p-12">
+      {/* TRASH ANCHOR */}
+      <button
+        onClick={onViewTrash}
+        className="absolute top-8 right-8 text-slate-400 hover:text-[#9333ea] transition-colors flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] group cursor-pointer"
+      >
+        <span className="text-sm group-hover:rotate-12 transition-transform">
+          🗑
+        </span>
+        <span>View Trash</span>
+      </button>
       {/* Header Area */}
       <header className="mb-16 text-center">
         <h1 className="text-5xl font-bold mb-4 italic text-slate-800 tracking-tight">

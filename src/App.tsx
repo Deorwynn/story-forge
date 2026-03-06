@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Project } from './types/project';
 import TopNav from './components/layout/TopNav';
+import TrashView from './components/home/TrashView';
 import './App.css';
 
 import HomeView from './components/home/HomeView';
@@ -12,6 +13,7 @@ function App() {
   const [character, setCharacter] = useState({ id: 'char_001', name: '' });
   const [status, setStatus] = useState('Waiting for input...');
   const [activeProject, setActiveProject] = useState<Project | null>(null);
+  const [view, setView] = useState<'library' | 'trash'>('library');
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
@@ -34,7 +36,18 @@ function App() {
   }, [character]);
 
   if (!activeProject) {
-    return <HomeView onCreateProject={(p) => setActiveProject(p)} />;
+    return (
+      <div className="app-container">
+        {view === 'library' ? (
+          <HomeView
+            onCreateProject={(p) => setActiveProject(p)}
+            onViewTrash={() => setView('trash')}
+          />
+        ) : (
+          <TrashView onBack={() => setView('library')} />
+        )}
+      </div>
+    );
   }
 
   return (
