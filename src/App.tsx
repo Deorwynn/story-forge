@@ -14,6 +14,7 @@ function App() {
   const [status, setStatus] = useState('Waiting for input...');
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [view, setView] = useState<'library' | 'trash'>('library');
+  const [activeTab, setActiveTab] = useState('Characters');
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
@@ -50,9 +51,19 @@ function App() {
     );
   }
 
+  const handleExitProject = () => {
+    setActiveProject(null);
+    setView('library');
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden">
-      <TopNav />
+      <TopNav
+        onExit={handleExitProject}
+        projectName={activeProject.name}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-y-auto bg-white">

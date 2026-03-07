@@ -1,4 +1,17 @@
-export default function TopNav() {
+import Button from '../shared/Button';
+import { LibraryIcon, FeatherIcon } from '../shared/Icons';
+
+export default function TopNav({
+  onExit,
+  projectName,
+  activeTab,
+  onTabChange,
+}: {
+  onExit: () => void;
+  projectName: string;
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+}) {
   const menus = [
     'Write',
     'Revisions',
@@ -8,31 +21,56 @@ export default function TopNav() {
     'Research',
     'Braindump',
   ];
+
   return (
-    <div className="h-14 bg-white border-b border-slate-200 flex items-center px-4 justify-between">
-      <div className="flex items-center gap-8">
+    <nav className="bg-white border-b border-gray-200 px-6 py-4 flex flex-col shrink-0">
+      {/* Top Row: Info and Library Button */}
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-[#d8b4fe] rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold">S</span>
+          {/* Logo Box */}
+          <div className="w-10 h-10 bg-gradient-to-br from-purple-400 to-pink-400 rounded-lg flex items-center justify-center shadow-sm">
+            <FeatherIcon className="w-6 h-6 text-white" />
           </div>
-          <div>
-            <h1 className="text-sm font-bold leading-none">StoryForge</h1>
-            <p className="text-[10px] text-slate-400">
+
+          <div className="flex flex-col">
+            <h1 className="text-xl font-semibold text-gray-800 leading-tight">
+              {projectName || 'Whispers in the Mist'}
+            </h1>
+            <p className="text-xs text-gray-500 mt-0.5">
               Your Creative Writing Studio
             </p>
           </div>
         </div>
-        <nav className="flex gap-6">
-          {menus.map((m) => (
+
+        {/* Library Button */}
+        <Button variant="outline" onClick={onExit} className="h-8 px-3 gap-2">
+          <LibraryIcon className="w-4 h-4" />
+          <span>Library</span>
+        </Button>
+      </div>
+
+      {/* Bottom Row: Tab Navigation */}
+      <div className="flex gap-1">
+        {menus.map((m) => {
+          const isActive = m === activeTab;
+          return (
             <button
               key={m}
-              className={`text-sm font-medium cursor-pointer ${m === 'Characters' ? 'text-[#9333ea] border-b-2 border-[#9333ea] h-14' : 'text-slate-500 hover:text-slate-800'}`}
+              onClick={() => onTabChange(m)}
+              className={`
+                px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer
+                ${
+                  isActive
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }
+              `}
             >
               {m}
             </button>
-          ))}
-        </nav>
+          );
+        })}
       </div>
-    </div>
+    </nav>
   );
 }
