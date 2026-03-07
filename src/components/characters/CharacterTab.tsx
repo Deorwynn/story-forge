@@ -1,10 +1,7 @@
-interface Props {
-  character: { name: string };
-  onUpdate: (name: string) => void;
-  status: string;
-}
+import { useWorkspace } from '../../context/WorkspaceContext';
 
-export default function CharacterTab({ character, onUpdate, status }: Props) {
+export default function CharacterTab() {
+  const { character, updateCharacter, status } = useWorkspace();
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-8">
@@ -17,11 +14,10 @@ export default function CharacterTab({ character, onUpdate, status }: Props) {
           Character Name
         </label>
         <input
-          className="text-3xl font-bold text-slate-800 border-b border-transparent focus:border-[#9333ea] outline-none w-full pb-2"
           value={character.name}
-          onChange={(e) => onUpdate(e.target.value)}
-          placeholder="Elena Rivers"
+          onChange={(e) => updateCharacter(e.target.value)}
         />
+        <p>{status}</p>
       </div>
     </div>
   );

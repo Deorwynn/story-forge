@@ -1,20 +1,47 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Project } from './types/project';
-import TopNav from './components/layout/TopNav';
-import TrashView from './components/home/TrashView';
+import { ForgeView, VIEW_COMPONENTS } from './navigation/Router';
+import { WorkspaceProvider } from './context/WorkspaceContext';
 import './App.css';
 
+import TopNav from './components/layout/TopNav';
+import TrashView from './components/home/TrashView';
 import HomeView from './components/home/HomeView';
-import CharacterTab from './components/CharacterTab';
 import Sidebar from './components/layout/Sidebar';
 
 function App() {
   const [character, setCharacter] = useState({ id: 'char_001', name: '' });
   const [status, setStatus] = useState('Waiting for input...');
-  const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [view, setView] = useState<'library' | 'trash'>('library');
-  const [activeTab, setActiveTab] = useState('Characters');
+
+  // Hydrate Project State
+  const [activeProject, setActiveProject] = useState<Project | null>(() => {
+    const saved = localStorage.getItem('last_active_project');
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Hydrate Tab State
+  const [activeTab, setActiveTab] = useState<ForgeView>(() => {
+    return (localStorage.getItem('last_active_tab') as ForgeView) || 'Write';
+  });
+
+  // Persistence Sync
+  useEffect(() => {
+    if (activeProject) {
+      localStorage.setItem(
+        'last_active_project',
+        JSON.stringify(activeProject)
+      );
+      localStorage.setItem('last_active_tab', activeTab);
+    } else {
+      localStorage.removeItem('last_active_project');
+    }
+  }, [activeProject, activeTab]);
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
@@ -51,27 +78,33 @@ function App() {
     );
   }
 
-  const handleExitProject = () => {
-    setActiveProject(null);
-    setView('library');
-  };
+  const CurrentView = VIEW_COMPONENTS[activeTab];
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       <TopNav
-        onExit={handleExitProject}
+        onExit={() => {
+          setActiveProject(null);
+          setView('library');
+        }}
         projectName={activeProject.name}
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={(tab) => setActiveTab(tab as ForgeView)}
       />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-y-auto bg-white">
-          <CharacterTab
-            character={character}
-            onUpdate={(name) => setCharacter({ ...character, name })}
-            status={status}
-          />
+          <WorkspaceProvider
+            value={{
+              project: activeProject,
+              character,
+              status,
+              updateCharacter: (name: string) =>
+                setCharacter({ ...character, name }),
+            }}
+          >
+            <CurrentView />
+          </WorkspaceProvider>
         </main>
       </div>
     </div>
