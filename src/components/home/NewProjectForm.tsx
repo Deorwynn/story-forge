@@ -51,7 +51,7 @@ export default function NewProjectForm({
         projectType: type,
         bookCount: type === 'series' ? bookCount : 1,
         genre,
-        description: '',
+        description: description,
       });
 
       if (type === 'standalone') {
@@ -76,7 +76,7 @@ export default function NewProjectForm({
         id: projectId,
         name: name || 'Untitled Story',
         type: type,
-        expectedBookCount: type === 'series' ? bookCount : 1,
+        volumes: type === 'series' ? bookCount : 1,
         createdAt: now,
         updatedAt: now,
         lastOpened: now,

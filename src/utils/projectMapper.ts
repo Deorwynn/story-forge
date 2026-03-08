@@ -9,7 +9,7 @@ export function mapRawProject(p: any): Project {
     id: p.id,
     name: p.name || 'Untitled Story',
     type: p.projectType || p.type,
-    expectedBookCount: p.book_count || 1,
+    volumes: p.bookCount || 1,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
     lastOpened: p.updatedAt || Math.floor(Date.now() / 1000),

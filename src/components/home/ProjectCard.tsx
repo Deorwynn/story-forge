@@ -1,5 +1,5 @@
-import { useState } from 'react';
 import { Project } from '../../types/project';
+import ProjectMenu from './ProjectMenu';
 
 interface ProjectCardProps {
   project: Project;
@@ -14,101 +14,86 @@ export default function ProjectCard({
   onDelete,
   onEdit,
 }: ProjectCardProps) {
-  const [showMenu, setShowMenu] = useState(false);
-
-  const formatTimeAgo = (timestamp: number) => {
-    if (!timestamp) return 'Never';
-    const seconds = Math.floor((Date.now() - timestamp * 1000) / 1000);
-    if (seconds < 60) return 'Just now';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
+  const formatDate = (timestamp: number) => {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(new Date(timestamp * 1000));
   };
 
   return (
-    <div className="group relative h-56">
-      {/* CARD BUTTON */}
+    <div
+      className={`
+      group relative h-80 flex flex-col bg-white border border-slate-200 rounded-2xl 
+      hover:border-purple-400 focus-within:ring-2 focus-within:ring-purple-400 
+      transition-all duration-300 overflow-hidden 
+  
+      shadow-[0_4px_12px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.08)]
+      hover:shadow-[0_12px_24px_rgba(15,23,42,0.08),0_4px_16px_rgba(147,51,234,0.12)]
+    `}
+    >
+      {/* Animated Left Border */}
+      <div className="absolute top-0 left-0 w-1 h-0 group-hover:h-full group-focus-within:h-full bg-[#9333ea] transition-all duration-300 z-40" />
+
+      {/* Global Click Target */}
       <button
         onClick={() => onSelect(project)}
-        className="w-full h-full p-6 bg-white border border-slate-200 rounded-2xl 
-                   hover:border-[#9333ea] hover:shadow-xl hover:shadow-purple-50 
-                   focus:outline-none focus:ring-2 focus:ring-[#9333ea] focus:ring-offset-4
-                   transition-all text-left cursor-pointer relative flex flex-col overflow-hidden shadow-sm"
-      >
-        {/* Animated Left Border */}
-        <div className="absolute top-0 left-0 w-1 h-0 group-hover:h-full bg-[#9333ea] transition-all duration-300" />
+        className="absolute inset-0 w-full h-full cursor-pointer z-10 focus:outline-none"
+        aria-label={`Open ${project.name}`}
+      />
 
-        <div className="flex justify-between items-start mb-4 pr-8 w-full">
-          <span className="px-2.5 py-1 rounded-lg bg-[#f3e8ff] text-[#9333ea] text-[10px] font-bold uppercase tracking-widest border border-[#e9d5ff]">
-            {project.genre || 'General'}
-          </span>
-          <span className="text-slate-400 text-[10px] font-medium italic">
-            Edited {formatTimeAgo(project.updatedAt)}
-          </span>
+      {/* Integrated Cover & Title Area */}
+      <div className="relative h-32 bg-slate-200 border-b border-slate-100 group-hover:bg-slate-300 transition-colors flex flex-col justify-end">
+        <div className="absolute inset-0 z-0 bg-gradient-to-t from-white via-white/40 to-transparent" />
+
+        <div className="relative z-20 px-6 pb-3 pointer-events-none">
+          <h3 className="text-xl font-bold text-slate-900 group-hover:text-[#9333ea] transition-colors line-clamp-1 drop-shadow-sm">
+            {project.name}
+          </h3>
+          <p className="text-[10px] font-bold text-purple-600 uppercase tracking-wider mt-0.5 group-hover:text-purple-700 transition-colors drop-shadow-sm">
+            {project.type === 'series'
+              ? `Series (${project.volumes} ${project.volumes === 1 ? 'volume' : 'volumes'})`
+              : 'Standalone Novel'}
+          </p>
         </div>
 
-        <h3 className="text-xl font-bold mb-2 text-slate-800 group-hover:text-[#9333ea] transition-colors line-clamp-1">
-          {project.name}
-        </h3>
+        {/* Vertical Menu */}
+        <ProjectMenu
+          onEdit={() => onEdit(project)}
+          onDelete={() => onDelete(project.id)}
+        />
+      </div>
 
-        <p className="text-slate-500 text-sm line-clamp-3 leading-relaxed mb-4 flex-grow">
-          {project.description ||
-            'Every epic journey begins with a single word...'}
-        </p>
-
-        <div className="flex items-center justify-between pt-4 border-t border-slate-100 w-full mt-auto">
-          <span className="text-slate-400 text-[10px] font-bold uppercase tracking-[0.15em]">
-            {project.type}
-          </span>
-          <div className="w-1.5 h-1.5 rounded-full bg-[#9333ea] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      {/* Description & Metadata Area */}
+      <div className="p-6 pt-4 flex flex-col relative z-20 pointer-events-none">
+        <div className="h-[60px] mb-5">
+          <p className="text-slate-600 text-sm line-clamp-3 leading-relaxed">
+            {project.description?.trim() ||
+              'No description provided for this story yet.'}
+          </p>
         </div>
-      </button>
 
-      {/* THREE-DOT MENU */}
-      <div className="absolute top-4 right-4 z-20">
-        <button
-          aria-label="More options"
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowMenu(!showMenu);
-          }}
-          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#9333ea] transition-colors cursor-pointer"
-        >
-          <span className="font-black text-lg leading-none mb-1">...</span>
-        </button>
+        {/* Footer Area */}
+        <div className="mt-auto">
+          <div className="flex flex-wrap gap-2 mb-4">
+            <span className="px-2.5 py-1 rounded-lg bg-purple-100/50 text-[#9333ea] text-[10px] font-bold uppercase tracking-tight border border-purple-200/50">
+              {project.genre || 'General'}
+            </span>
+          </div>
 
-        {showMenu && (
-          <>
-            <div
-              className="fixed inset-0 z-10"
-              onClick={() => setShowMenu(false)}
-            />
-            <div className="absolute right-0 mt-2 w-36 bg-white rounded-xl shadow-2xl border border-slate-100 py-1.5 z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit(project);
-                  setShowMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left text-sm text-slate-600 hover:bg-purple-50 hover:text-[#9333ea] flex items-center gap-3 transition-colors"
-              >
-                <span className="text-base">✎</span> <span>Edit details</span>
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(project.id);
-                  setShowMenu(false);
-                }}
-                className="w-full px-4 py-2 text-left text-sm text-red-500 hover:bg-red-50 flex items-center gap-3 transition-colors font-medium"
-              >
-                <span className="text-base">🗑</span> <span>Move to Trash</span>
-              </button>
-            </div>
-          </>
-        )}
+          <div
+            className="flex items-center justify-between pt-4 border-t border-slate-100"
+            role="separator"
+          >
+            <span className="text-slate-400 text-[10px] font-medium uppercase tracking-wider">
+              Last edited
+            </span>
+            <span className="text-slate-700 text-[12px] font-bold">
+              {formatDate(project.updatedAt)}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1,17 +1,18 @@
-import { ReactNode } from 'react';
+import { ButtonHTMLAttributes, ReactNode } from 'react';
 
-interface ButtonProps {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
-  onClick?: () => void;
   variant?: 'primary' | 'outline' | 'ghost';
   className?: string;
+  isLoading?: boolean;
 }
 
 export default function Button({
   children,
-  onClick,
   variant = 'primary',
   className = '',
+  isLoading = false,
+  ...props
 }: ButtonProps) {
   const baseStyles =
     'inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all h-8 rounded-lg px-3 gap-2 outline-none focus-visible:ring-2 focus-visible:ring-purple-500/50 disabled:pointer-events-none disabled:opacity-50 shrink-0 cursor-pointer';
@@ -25,10 +26,18 @@ export default function Button({
 
   return (
     <button
-      onClick={onClick}
+      {...props}
+      disabled={props.disabled || isLoading}
       className={`${baseStyles} ${variants[variant]} ${className}`}
     >
-      {children}
+      {isLoading ? (
+        <span className="flex items-center justify-center gap-2">
+          <span className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+          Processing...
+        </span>
+      ) : (
+        children
+      )}
     </button>
   );
 }
