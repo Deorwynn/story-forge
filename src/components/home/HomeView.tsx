@@ -117,7 +117,7 @@ export default function HomeView({
         </p>
       </header>
 
-      <main className="w-full max-w-6xl flex flex-col items-center">
+      <main className="w-full max-w-7xl flex flex-col items-center">
         {existingProjects.length === 0 ? (
           <EmptyState />
         ) : (
