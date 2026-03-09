@@ -7,7 +7,7 @@ import './App.css';
 
 import TopNav from './components/layout/TopNav';
 import TrashView from './components/home/TrashView';
-import HomeView from './components/home/HomeView';
+import ProjectLibrary from './components/home/ProjectLibrary';
 import Sidebar from './components/layout/Sidebar';
 
 function App() {
@@ -67,7 +67,7 @@ function App() {
     return (
       <div className="app-container">
         {view === 'library' ? (
-          <HomeView
+          <ProjectLibrary
             onCreateProject={(p) => setActiveProject(p)}
             onViewTrash={() => setView('trash')}
           />
@@ -78,6 +78,19 @@ function App() {
     );
   }
 
+  const handleBookSwitch = (book: any) => {
+    if (!activeProject) return;
+
+    setActiveProject({
+      ...activeProject,
+      name: book.title,
+      volumeNumber: book.order_index + 1,
+    });
+
+    // Later: trigger a re-fetch of
+    // 'documents' (chapters/notes) using the book.id here
+  };
+
   const CurrentView = VIEW_COMPONENTS[activeTab];
 
   return (
@@ -87,9 +100,10 @@ function App() {
           setActiveProject(null);
           setView('library');
         }}
-        projectName={activeProject.name}
+        project={activeProject}
         activeTab={activeTab}
         onTabChange={(tab) => setActiveTab(tab as ForgeView)}
+        onBookSwitch={handleBookSwitch}
       />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />

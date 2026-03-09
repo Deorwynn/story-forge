@@ -8,6 +8,8 @@ export function mapRawProject(p: any): Project {
   return {
     id: p.id,
     name: p.name || 'Untitled Story',
+    seriesName: p.seriesName || '',
+    volumeNumber: p.volumeNumber || 1,
     type: p.projectType || p.type,
     volumes: p.bookCount || 1,
     createdAt: p.createdAt,
