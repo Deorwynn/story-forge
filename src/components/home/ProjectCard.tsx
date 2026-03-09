@@ -49,7 +49,7 @@ export default function ProjectCard({
 
         <div className="relative z-20 px-6 pb-3 pointer-events-none">
           <h3 className="text-xl font-bold text-slate-900 group-hover:text-[#9333ea] transition-colors line-clamp-1 drop-shadow-sm">
-            {project.name}
+            {project.type === 'series' ? project.seriesName : project.name}
           </h3>
           <p className="text-[10px] font-bold text-purple-600 uppercase tracking-wider mt-0.5 group-hover:text-purple-700 transition-colors drop-shadow-sm">
             {project.type === 'series'

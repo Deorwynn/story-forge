@@ -12,8 +12,10 @@ struct BookRow {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ProjectRow {
-id: String,
+    id: String,
     name: String,
+    series_name: String,
+    volume_number: i32,
     project_type: String,
     book_count: i32,
     genre: String,
@@ -129,6 +131,16 @@ if current_version < 5 {
     ).map_err(|e| e.to_string())?;
 }
 
+if current_version < 6 {
+    conn.execute_batch(
+        "BEGIN;
+        ALTER TABLE projects ADD COLUMN series_name TEXT DEFAULT '';
+        ALTER TABLE projects ADD COLUMN volume_number INTEGER DEFAULT 1;
+        PRAGMA user_version = 6;
+        COMMIT;"
+    ).map_err(|e| e.to_string())?;
+}
+
     Ok(())
 }
 
@@ -143,6 +155,8 @@ async fn create_project(
     app_handle: tauri::AppHandle, 
     id: String, 
     name: String, 
+    series_name: String,
+    volume_number: i32,
     project_type: String, 
     book_count: i32,
     genre: String,
@@ -151,17 +165,15 @@ async fn create_project(
     let path = get_db_path(&app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
-    let _ : String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0)).map_err(|e| e.to_string())?;
-
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|e: std::time::SystemTimeError| e.to_string())?
+        .map_err(|e| e.to_string())?
         .as_secs() as i64;
 
     conn.execute(
-        "INSERT INTO projects (id, name, type, book_count, created_at, updated_at, genre, description) 
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        (id, name, project_type, book_count, now, now, genre, description),
+        "INSERT INTO projects (id, name, series_name, volume_number, type, book_count, created_at, updated_at, genre, description) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        (id, name, series_name, volume_number, project_type, book_count, now, now, genre, description),
     ).map_err(|e| e.to_string())?;
 
     Ok(())
@@ -195,13 +207,13 @@ async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, S
 
     let mut stmt = conn.prepare(
         "SELECT 
-            p.id, p.name, p.type, p.book_count, p.genre, p.description, p.created_at, p.updated_at,
+            p.id, p.name, p.series_name, p.volume_number, p.type, p.book_count, p.genre, p.description, p.created_at, p.updated_at,
             COALESCE(
                 (SELECT json_group_array(
                     json_object('id', b.id, 'title', b.title, 'order_index', b.order_index)
                 ) FROM books b WHERE b.project_id = p.id),
                 '[]'
-        ) as books_json
+            ) as books_json
         FROM projects p
         WHERE p.deleted_at IS NULL
         ORDER BY p.updated_at DESC"
@@ -209,19 +221,21 @@ async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, S
 
     let project_rows = stmt.query_map([], |row| {
         // Parse the JSON string back into our BookRow vector
-        let books_json: String = row.get(8)?;
+        let books_json: String = row.get(10)?; 
         let books: Vec<BookRow> = serde_json::from_str(&books_json)
-        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
         Ok(ProjectRow {
             id: row.get(0)?,
             name: row.get(1)?,
-            project_type: row.get(2)?,
-            book_count: row.get(3)?,
-            genre: row.get(4)?,
-            description: row.get(5)?,
-            created_at: row.get::<_, Option<i64>>(6)?.unwrap_or(0), 
-            updated_at: row.get::<_, Option<i64>>(7)?.unwrap_or(0),
+            series_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            volume_number: row.get::<_, Option<i32>>(3)?.unwrap_or(1),
+            project_type: row.get(4)?,
+            book_count: row.get(5)?,
+            genre: row.get(6)?,
+            description: row.get(7)?,
+            created_at: row.get::<_, Option<i64>>(8)?.unwrap_or(0), 
+            updated_at: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
             books,
         })
     }).map_err(|e| e.to_string())?;
@@ -232,6 +246,30 @@ async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, S
     }
 
     Ok(projects)
+}
+
+#[tauri::command]
+async fn get_project_books(app_handle: tauri::AppHandle, project_id: String) -> Result<Vec<BookRow>, String> {
+    let path = get_db_path(&app_handle)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare("SELECT id, title, order_index FROM books WHERE project_id = ?1 ORDER BY order_index ASC")
+        .map_err(|e| e.to_string())?;
+
+    let book_rows = stmt.query_map([project_id], |row| {
+        Ok(BookRow {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            order_index: row.get(2)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    let mut books = Vec::new();
+    for book in book_rows {
+        books.push(book.map_err(|e| e.to_string())?);
+    }
+    Ok(books)
 }
 
 #[tauri::command]
@@ -258,7 +296,8 @@ async fn get_trashed_projects(app_handle: tauri::AppHandle) -> Result<Vec<Projec
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn.prepare(
-        "SELECT p.id, p.name, p.type, p.book_count, p.genre, p.description, p.created_at, p.updated_at,
+        "SELECT 
+            p.id, p.name, p.series_name, p.volume_number, p.type, p.book_count, p.genre, p.description, p.created_at, p.updated_at,
             COALESCE((SELECT json_group_array(json_object('id', b.id, 'title', b.title, 'order_index', b.order_index)) 
             FROM books b WHERE b.project_id = p.id), '[]') as books_json
         FROM projects p
@@ -267,17 +306,20 @@ async fn get_trashed_projects(app_handle: tauri::AppHandle) -> Result<Vec<Projec
     ).map_err(|e| e.to_string())?;
 
     let rows = stmt.query_map([], |row| {
-        let books_json: String = row.get(8)?;
+        let books_json: String = row.get(10)?; 
         let books: Vec<BookRow> = serde_json::from_str(&books_json).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        
         Ok(ProjectRow {
             id: row.get(0)?,
             name: row.get(1)?,
-            project_type: row.get(2)?,
-            book_count: row.get(3)?,
-            genre: row.get(4)?,
-            description: row.get(5)?,
-            created_at: row.get::<_, Option<i64>>(6)?.unwrap_or(0),
-            updated_at: row.get::<_, Option<i64>>(7)?.unwrap_or(0),
+            series_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            volume_number: row.get::<_, Option<i32>>(3)?.unwrap_or(1),
+            project_type: row.get(4)?,
+            book_count: row.get(5)?,
+            genre: row.get(6)?,
+            description: row.get(7)?,
+            created_at: row.get::<_, Option<i64>>(8)?.unwrap_or(0),
+            updated_at: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
             books,
         })
     }).map_err(|e| e.to_string())?;
@@ -327,7 +369,17 @@ pub fn run() {
             init_db(app.handle())?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![create_project, get_projects, create_book, delete_project, get_trashed_projects, restore_project, purge_project, empty_trash])
+        .invoke_handler(tauri::generate_handler![
+            create_project, 
+            get_projects, 
+            create_book, 
+            get_project_books, 
+            delete_project, 
+            get_trashed_projects, 
+            restore_project, 
+            purge_project, 
+            empty_trash
+            ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
