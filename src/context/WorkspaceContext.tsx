@@ -9,6 +9,7 @@ interface WorkspaceContextType {
   documents: ManuscriptDoc[];
   isLoadingDocs: boolean;
   updateCharacter: (name: string) => void;
+  refreshDocuments: () => Promise<void>;
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextType | undefined>(

@@ -47,6 +47,25 @@ function App() {
   }, [activeProject, activeTab]);
 
   useEffect(() => {
+    const syncProjectWithDb = async () => {
+      // fetch the full project if we have an ID but no books array
+      if (activeProject?.id && !activeProject.books) {
+        try {
+          console.log('Syncing project with database...');
+          const fullProject = await invoke<Project>('get_project_by_id', {
+            id: activeProject.id,
+          });
+          setActiveProject(fullProject);
+        } catch (err) {
+          console.error('Failed to sync project:', err);
+        }
+      }
+    };
+
+    syncProjectWithDb();
+  }, [activeProject?.id]);
+
+  useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
       if (character.name.length > 0) {
         try {
@@ -66,33 +85,37 @@ function App() {
     return () => clearTimeout(delayDebounceFn);
   }, [character]);
 
+  const fetchDocs = async () => {
+    if (!activeProject) return;
+
+    const currentBookId =
+      activeProject.books?.[activeProject.volumeNumber - 1]?.id;
+
+    if (currentBookId) {
+      // Clear old docs
+      setDocuments([]);
+      setIsLoadingDocs(true);
+
+      try {
+        const result = await invoke<ManuscriptDoc[]>('get_book_documents', {
+          bookId: currentBookId,
+        });
+        setDocuments(result);
+      } catch (err) {
+        console.error('Failed to fetch documents:', err);
+      } finally {
+        setIsLoadingDocs(false);
+      }
+    }
+  };
+
   useEffect(() => {
     // Only fetch if we actually have an active project and it has a book selected
+    setDocuments([]);
 
-    const fetchDocs = async () => {
-      if (!activeProject) return;
-
-      // assume for now you're tracking which book is active
-      // (e.g., via activeProject.id or a separate state)
-      const currentBookId =
-        activeProject.books?.[activeProject.volumeNumber - 1]?.id;
-
-      if (currentBookId) {
-        setIsLoadingDocs(true);
-        try {
-          const result = await invoke<ManuscriptDoc[]>('get_book_documents', {
-            bookId: currentBookId,
-          });
-          setDocuments(result);
-        } catch (err) {
-          console.error('Failed to fetch documents:', err);
-        } finally {
-          setIsLoadingDocs(false);
-        }
-      }
-    };
-
-    fetchDocs();
+    if (activeProject?.id) {
+      fetchDocs();
+    }
   }, [activeProject?.id, activeProject?.volumeNumber]);
 
   if (!activeProject) {
@@ -116,7 +139,7 @@ function App() {
     setActiveProject({
       ...activeProject,
       name: book.title,
-      volumeNumber: book.order_index + 1,
+      volumeNumber: book.orderIndex + 1,
     });
 
     // Later: trigger a re-fetch of
@@ -146,6 +169,7 @@ function App() {
           isLoadingDocs,
           updateCharacter: (name: string) =>
             setCharacter({ ...character, name }),
+          refreshDocuments: fetchDocs,
         }}
       >
         <div className="flex flex-1 overflow-hidden">

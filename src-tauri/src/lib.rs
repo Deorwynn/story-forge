@@ -1,8 +1,15 @@
 use rusqlite::{Connection, params};
 use tauri::Manager;
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
+use std::sync::Mutex;
+
+struct AppState {
+    db: Mutex<rusqlite::Connection>,
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct BookRow {
     id: String,
     title: String,
@@ -27,7 +34,7 @@ struct ProjectRow {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct DocumentRow {
+struct ManuscriptDoc {
     id: String,
     project_id: String,
     book_id: Option<String>,
@@ -42,7 +49,7 @@ struct DocumentRow {
     updated_at: i64,
 }
 
-fn init_db(app_handle: &tauri::AppHandle) -> Result<(), String> {
+fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
     let path = get_db_path(app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
@@ -158,7 +165,7 @@ if current_version < 6 {
     ).map_err(|e| e.to_string())?;
 }
 
-    Ok(())
+    Ok(conn)
 }
 
 fn get_db_path(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
@@ -217,6 +224,59 @@ async fn create_book(
     Ok(())
 }
 
+#[tauri::command(rename_all = "snake_case")]
+async fn create_document(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+    book_id: String,
+    parent_id: Option<String>,
+    doc_type: String,
+) -> Result<ManuscriptDoc, String> {
+    let conn = state.db.lock().unwrap();
+    let id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp();
+
+    // Calculate the next order_index
+    // find the current max index for the same parent and book
+    let next_index: i32 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(order_index), -1) + 1 
+             FROM documents 
+             WHERE book_id = ?1 AND parent_id IS ?2",
+            params![book_id, parent_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let doc = ManuscriptDoc {
+        id: id.clone(),
+        project_id,
+        book_id: Some(book_id),
+        parent_id,
+        title: if doc_type == "chapter" { "New Chapter".into() } else { "New Scene".into() },
+        content: "".into(),
+        doc_type,
+        version: 1,
+        is_archived: false,
+        order_index: next_index,
+        created_at: now,
+        updated_at: now,
+    };
+
+    // Insert into DB
+    conn.execute(
+        "INSERT INTO documents (id, project_id, book_id, parent_id, title, content, doc_type, version, is_archived, order_index, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![
+            doc.id, doc.project_id, doc.book_id, doc.parent_id, 
+            doc.title, doc.content, doc.doc_type, doc.version, 
+            doc.is_archived, doc.order_index, doc.created_at, doc.updated_at
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(doc)
+}
+
 #[tauri::command]
 async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, String> {
     let path = get_db_path(&app_handle)?;
@@ -227,7 +287,7 @@ async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, S
             p.id, p.name, p.series_name, p.volume_number, p.type, p.book_count, p.genre, p.description, p.created_at, p.updated_at,
             COALESCE(
                 (SELECT json_group_array(
-                    json_object('id', b.id, 'title', b.title, 'order_index', b.order_index)
+                    json_object('id', b.id, 'title', b.title, 'orderIndex', b.order_index)
                 ) FROM books b WHERE b.project_id = p.id),
                 '[]'
             ) as books_json
@@ -266,6 +326,47 @@ async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, S
 }
 
 #[tauri::command]
+async fn get_project_by_id(app_handle: tauri::AppHandle, id: String) -> Result<ProjectRow, String> {
+    let path = get_db_path(&app_handle)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn.prepare(
+        "SELECT 
+            p.id, p.name, p.series_name, p.volume_number, p.type, p.book_count, p.genre, p.description, p.created_at, p.updated_at,
+            COALESCE(
+                (SELECT json_group_array(
+                    json_object('id', b.id, 'title', b.title, 'order_index', b.order_index)
+                ) FROM books b WHERE b.project_id = p.id),
+                '[]'
+            ) as books_json
+        FROM projects p
+        WHERE p.id = ?1"
+    ).map_err(|e| e.to_string())?;
+
+    let project = stmt.query_row([id], |row| {
+        let books_json: String = row.get(10)?; 
+        let books: Vec<BookRow> = serde_json::from_str(&books_json)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        Ok(ProjectRow {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            series_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            volume_number: row.get::<_, Option<i32>>(3)?.unwrap_or(1),
+            project_type: row.get(4)?,
+            book_count: row.get(5)?,
+            genre: row.get(6)?,
+            description: row.get(7)?,
+            created_at: row.get::<_, Option<i64>>(8)?.unwrap_or(0), 
+            updated_at: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
+            books,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    Ok(project)
+}
+
+#[tauri::command]
 async fn get_project_books(app_handle: tauri::AppHandle, project_id: String) -> Result<Vec<BookRow>, String> {
     let path = get_db_path(&app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
@@ -290,7 +391,7 @@ async fn get_project_books(app_handle: tauri::AppHandle, project_id: String) -> 
 }
 
 #[tauri::command]
-async fn get_book_documents(app_handle: tauri::AppHandle, book_id: String) -> Result<Vec<DocumentRow>, String> {
+async fn get_book_documents(app_handle: tauri::AppHandle, book_id: String) -> Result<Vec<ManuscriptDoc>, String> {
     let path = get_db_path(&app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
@@ -306,7 +407,7 @@ async fn get_book_documents(app_handle: tauri::AppHandle, book_id: String) -> Re
         .map_err(|e| e.to_string())?;
 
     let doc_rows = stmt.query_map([book_id], |row| {
-        Ok(DocumentRow {
+        Ok(ManuscriptDoc {
             id: row.get(0)?,
             project_id: row.get(1)?,
             book_id: row.get(2)?,
@@ -423,15 +524,22 @@ async fn empty_trash(app_handle: tauri::AppHandle) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            init_db(app.handle())?;
+            let conn = init_db(app.handle())?;
+
+            app.manage(AppState {
+                db: Mutex::new(conn),
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             create_project, 
-            get_projects, 
             create_book, 
+            create_document,
+            get_projects, 
             get_project_books, 
             get_book_documents,
+            get_project_by_id,
             delete_project, 
             get_trashed_projects, 
             restore_project, 

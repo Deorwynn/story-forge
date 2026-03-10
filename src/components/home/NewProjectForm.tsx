@@ -53,15 +53,12 @@ export default function NewProjectForm({
     const projectId = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);
 
-    // DETERMINING THE NAMES
-    // Project Name = The specific Book Title
-    // Series Name = The overarching Saga Title
     const finalBookName =
       type === 'series' ? bookTitles[0] || 'Untitled Volume' : inputValue;
-
     const finalSeriesName = type === 'series' ? seriesTitle : '';
 
     try {
+      // Create the Project
       await invoke('create_project', {
         id: projectId,
         name: finalBookName,
@@ -73,22 +70,29 @@ export default function NewProjectForm({
         description,
       });
 
-      // Create entries in the books table
+      const generatedBooks: any[] = [];
+
+      // Create the Books for Rust
       if (type === 'standalone') {
+        const bId = crypto.randomUUID();
         await invoke('create_book', {
-          id: crypto.randomUUID(),
-          projectId,
+          id: bId,
+          projectId: projectId,
           title: finalBookName,
           orderIndex: 0,
         });
+        generatedBooks.push({ id: bId, title: finalBookName, orderIndex: 0 });
       } else {
         for (let i = 0; i < bookTitles.length; i++) {
+          const bId = crypto.randomUUID();
+          const title = bookTitles[i] || `Volume ${i + 1}`;
           await invoke('create_book', {
-            id: crypto.randomUUID(),
-            projectId,
-            title: bookTitles[i] || `Volume ${i + 1}`,
+            id: bId,
+            projectId: projectId,
+            title: title,
             orderIndex: i,
           });
+          generatedBooks.push({ id: bId, title, orderIndex: i });
         }
       }
 
@@ -103,9 +107,11 @@ export default function NewProjectForm({
         updatedAt: now,
         genre,
         description,
+        books: generatedBooks,
       } as any);
     } catch (error) {
-      console.error(error);
+      console.error('FORGE ERROR:', error);
+      alert(`Failed to create project: ${error}`);
     } finally {
       setIsSaving(false);
     }
