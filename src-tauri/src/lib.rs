@@ -97,73 +97,83 @@ fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
 
     if current_version < 3 {
     conn.execute_batch(
-    "BEGIN;
-            CREATE TABLE IF NOT EXISTS books (
-            id TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL,
-            title TEXT NOT NULL,
-            description TEXT DEFAULT '',
-            order_index INTEGER NOT NULL,
-            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
-        );
-        PRAGMA user_version = 3;
-        COMMIT;"
-    ).map_err(|e| e.to_string())?;
-}
-
-if current_version < 4 {
-    conn.execute_batch(
         "BEGIN;
-        -- Add management columns to projects
-        ALTER TABLE projects ADD COLUMN updated_at INTEGER;
-        ALTER TABLE projects ADD COLUMN deleted_at INTEGER; -- For the Trash system
+                CREATE TABLE IF NOT EXISTS books (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                order_index INTEGER NOT NULL,
+                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+            PRAGMA user_version = 3;
+            COMMIT;"
+        ).map_err(|e| e.to_string())?;
+    }
 
-        -- Add progress tracking to books
-        ALTER TABLE books ADD COLUMN status TEXT DEFAULT 'Planning';
-        ALTER TABLE books ADD COLUMN target_word_count INTEGER DEFAULT 50000;
+    if current_version < 4 {
+        conn.execute_batch(
+            "BEGIN;
+            -- Add management columns to projects
+            ALTER TABLE projects ADD COLUMN updated_at INTEGER;
+            ALTER TABLE projects ADD COLUMN deleted_at INTEGER; -- For the Trash system
 
-        -- Update existing rows to have a timestamp
-        UPDATE projects SET updated_at = strftime('%s', 'now') WHERE updated_at IS NULL;
+            -- Add progress tracking to books
+            ALTER TABLE books ADD COLUMN status TEXT DEFAULT 'Planning';
+            ALTER TABLE books ADD COLUMN target_word_count INTEGER DEFAULT 50000;
 
-        PRAGMA user_version = 4;
-        COMMIT;"
-    ).map_err(|e| e.to_string())?;
-}
+            -- Update existing rows to have a timestamp
+            UPDATE projects SET updated_at = strftime('%s', 'now') WHERE updated_at IS NULL;
 
-if current_version < 5 {
-    conn.execute_batch(
-    "BEGIN;
-            CREATE TABLE IF NOT EXISTS documents (
-            id TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL,
-            book_id TEXT, 
-            parent_id TEXT, -- Allows for 'Revisions' of a 'Draft'
-            title TEXT NOT NULL,
-            content TEXT DEFAULT '',
-            doc_type TEXT NOT NULL, -- 'plot', 'chapter', 'note', 'brainstorm'
-            version INTEGER DEFAULT 1,
-            is_archived BOOLEAN DEFAULT 0, -- For old revisions
-            order_index INTEGER NOT NULL,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
-            FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE,
-            FOREIGN KEY(parent_id) REFERENCES documents(id) ON DELETE CASCADE
-        );
-        PRAGMA user_version = 5;
-        COMMIT;"
-    ).map_err(|e| e.to_string())?;
-}
+            PRAGMA user_version = 4;
+            COMMIT;"
+        ).map_err(|e| e.to_string())?;
+    }
 
-if current_version < 6 {
-    conn.execute_batch(
+    if current_version < 5 {
+        conn.execute_batch(
         "BEGIN;
-        ALTER TABLE projects ADD COLUMN series_name TEXT DEFAULT '';
-        ALTER TABLE projects ADD COLUMN volume_number INTEGER DEFAULT 1;
-        PRAGMA user_version = 6;
-        COMMIT;"
-    ).map_err(|e| e.to_string())?;
-}
+                CREATE TABLE IF NOT EXISTS documents (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                book_id TEXT, 
+                parent_id TEXT, -- Allows for 'Revisions' of a 'Draft'
+                title TEXT NOT NULL,
+                content TEXT DEFAULT '',
+                doc_type TEXT NOT NULL, -- 'plot', 'chapter', 'note', 'brainstorm'
+                version INTEGER DEFAULT 1,
+                is_archived BOOLEAN DEFAULT 0, -- For old revisions
+                order_index INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE,
+                FOREIGN KEY(parent_id) REFERENCES documents(id) ON DELETE CASCADE
+            );
+            PRAGMA user_version = 5;
+            COMMIT;"
+        ).map_err(|e| e.to_string())?;
+    }
+
+    if current_version < 6 {
+        conn.execute_batch(
+            "BEGIN;
+            ALTER TABLE projects ADD COLUMN series_name TEXT DEFAULT '';
+            ALTER TABLE projects ADD COLUMN volume_number INTEGER DEFAULT 1;
+            PRAGMA user_version = 6;
+            COMMIT;"
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // Migration: Version 6 -> 7 (Add deleted_at to documents)
+    if current_version < 7 {
+        conn.execute_batch(
+            "BEGIN;
+                ALTER TABLE documents ADD COLUMN deleted_at INTEGER;
+                PRAGMA user_version = 7;
+            COMMIT;"
+        ).map_err(|e| e.to_string())?;
+    }
 
     Ok(conn)
 }
@@ -241,8 +251,8 @@ async fn create_document(
     let next_index: i32 = conn
         .query_row(
             "SELECT COALESCE(MAX(order_index), -1) + 1 
-             FROM documents 
-             WHERE book_id = ?1 AND parent_id IS ?2",
+            FROM documents 
+            WHERE book_id = ?1 AND parent_id IS ?2 AND deleted_at IS NULL",
             params![book_id, parent_id],
             |row| row.get(0),
         )
@@ -401,7 +411,7 @@ async fn get_book_documents(app_handle: tauri::AppHandle, book_id: String) -> Re
                 id, project_id, book_id, parent_id, title, content, 
                 doc_type, version, is_archived, order_index, created_at, updated_at 
              FROM documents 
-             WHERE book_id = ?1 AND is_archived = 0
+             WHERE book_id = ?1 AND is_archived = 0 AND deleted_at IS NULL
              ORDER BY order_index ASC"
         )
         .map_err(|e| e.to_string())?;
@@ -442,6 +452,24 @@ async fn delete_project(app_handle: tauri::AppHandle, id: String) -> Result<(), 
 
     conn.execute(
         "UPDATE projects SET deleted_at = ?1 WHERE id = ?2",
+        params![now, id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn delete_document(app_handle: tauri::AppHandle, id: String) -> Result<(), String> {
+    let db_path = get_db_path(&app_handle)?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs() as i64;
+
+    conn.execute(
+        "UPDATE documents SET deleted_at = ?1 WHERE id = ?2",
         params![now, id],
     ).map_err(|e| e.to_string())?;
 
@@ -541,6 +569,7 @@ pub fn run() {
             get_book_documents,
             get_project_by_id,
             delete_project, 
+            delete_document,
             get_trashed_projects, 
             restore_project, 
             purge_project, 
