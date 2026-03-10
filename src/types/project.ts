@@ -1,3 +1,9 @@
+export interface Book {
+  id: string;
+  title: string;
+  orderIndex: number;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -11,4 +17,5 @@ export interface Project {
   cloudSyncId?: string;
   genre: string;
   description: string;
+  books: Book[];
 }

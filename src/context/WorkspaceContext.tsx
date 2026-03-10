@@ -1,14 +1,17 @@
 import { createContext, useContext, ReactNode } from 'react';
 import { Project } from '../types/project';
+import { ManuscriptDoc } from '../types/document';
 
 interface WorkspaceContextType {
-  project: Project;
+  project: Project | null;
   character: { id: string; name: string };
   status: string;
+  documents: ManuscriptDoc[];
+  isLoadingDocs: boolean;
   updateCharacter: (name: string) => void;
 }
 
-const WorkspaceContext = createContext<WorkspaceContextType | undefined>(
+export const WorkspaceContext = createContext<WorkspaceContextType | undefined>(
   undefined
 );
 

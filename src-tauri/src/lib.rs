@@ -25,6 +25,23 @@ struct ProjectRow {
     books: Vec<BookRow>,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentRow {
+    id: String,
+    project_id: String,
+    book_id: Option<String>,
+    parent_id: Option<String>,
+    title: String,
+    content: String,
+    doc_type: String, // 'plot', 'chapter', 'note'
+    version: i32,
+    is_archived: bool,
+    order_index: i32,
+    created_at: i64,
+    updated_at: i64,
+}
+
 fn init_db(app_handle: &tauri::AppHandle) -> Result<(), String> {
     let path = get_db_path(app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
@@ -273,6 +290,46 @@ async fn get_project_books(app_handle: tauri::AppHandle, project_id: String) -> 
 }
 
 #[tauri::command]
+async fn get_book_documents(app_handle: tauri::AppHandle, book_id: String) -> Result<Vec<DocumentRow>, String> {
+    let path = get_db_path(&app_handle)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT 
+                id, project_id, book_id, parent_id, title, content, 
+                doc_type, version, is_archived, order_index, created_at, updated_at 
+             FROM documents 
+             WHERE book_id = ?1 AND is_archived = 0
+             ORDER BY order_index ASC"
+        )
+        .map_err(|e| e.to_string())?;
+
+    let doc_rows = stmt.query_map([book_id], |row| {
+        Ok(DocumentRow {
+            id: row.get(0)?,
+            project_id: row.get(1)?,
+            book_id: row.get(2)?,
+            parent_id: row.get(3)?,
+            title: row.get(4)?,
+            content: row.get(5)?,
+            doc_type: row.get(6)?,
+            version: row.get(7)?,
+            is_archived: row.get(8)?,
+            order_index: row.get(9)?,
+            created_at: row.get(10)?,
+            updated_at: row.get(11)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    let mut docs = Vec::new();
+    for doc in doc_rows {
+        docs.push(doc.map_err(|e| e.to_string())?);
+    }
+    Ok(docs)
+}
+
+#[tauri::command]
 async fn delete_project(app_handle: tauri::AppHandle, id: String) -> Result<(), String> {
     let path = get_db_path(&app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
@@ -374,6 +431,7 @@ pub fn run() {
             get_projects, 
             create_book, 
             get_project_books, 
+            get_book_documents,
             delete_project, 
             get_trashed_projects, 
             restore_project, 
