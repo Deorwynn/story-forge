@@ -264,6 +264,18 @@ async fn create_document(
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp();
 
+    // Determine the Title: If chapter, count existing non-deleted chapters
+    let title = if doc_type == "chapter" {
+        let count: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM documents WHERE book_id = ?1 AND doc_type = 'chapter' AND deleted_at IS NULL",
+            params![book_id],
+            |row| row.get(0)
+        ).map_err(|e| e.to_string())?;
+        format!("Chapter {}", count + 1)
+    } else {
+        "New Scene".into()
+    };
+
     // Calculate the next order_index
     // find the current max index for the same parent and book
     let next_index: i32 = conn
@@ -281,7 +293,7 @@ async fn create_document(
         project_id,
         book_id: Some(book_id),
         parent_id,
-        title: if doc_type == "chapter" { "New Chapter".into() } else { "New Scene".into() },
+        title,
         content: "".into(),
         doc_type,
         version: 1,
@@ -291,7 +303,6 @@ async fn create_document(
         updated_at: now,
     };
 
-    // Insert into DB
     conn.execute(
         "INSERT INTO documents (id, project_id, book_id, parent_id, title, content, doc_type, version, is_archived, order_index, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
@@ -495,19 +506,56 @@ async fn delete_project(app_handle: tauri::AppHandle, id: String) -> Result<(), 
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn delete_document(app_handle: tauri::AppHandle, id: String) -> Result<(), String> {
-    let db_path = get_db_path(&app_handle)?;
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+async fn delete_document(
+    state: tauri::State<'_, AppState>, 
+    id: String, 
+    book_id: String
+) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    let now = chrono::Utc::now().timestamp();
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_secs() as i64;
-
+    // Soft delete the target document
     conn.execute(
         "UPDATE documents SET deleted_at = ?1 WHERE id = ?2",
         params![now, id],
     ).map_err(|e| e.to_string())?;
+
+    // Fetch all remaining chapters
+    let mut stmt = conn.prepare(
+        "SELECT id, title FROM documents 
+         WHERE book_id = ?1 AND doc_type = 'chapter' AND deleted_at IS NULL 
+         ORDER BY order_index ASC"
+    ).map_err(|e| e.to_string())?;
+
+    // Store both ID and Title
+    let chapters: Vec<(String, String)> = stmt
+        .query_map([book_id], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    // Smart Re-sequencing
+    for (i, (chap_id, current_title)) in chapters.iter().enumerate() {
+        let new_pos = i as i32;
+        let expected_number = new_pos + 1;
+        let default_pattern = format!("Chapter ");
+
+        // Check: Does the title start with "Chapter "? 
+        // If so, we assume it's an auto-generated name and update it.
+        if current_title.starts_with(&default_pattern) {
+            let new_title = format!("Chapter {}", expected_number);
+            conn.execute(
+                "UPDATE documents SET title = ?1, order_index = ?2 WHERE id = ?3",
+                params![new_title, new_pos, chap_id],
+            ).map_err(|e| e.to_string())?;
+        } else {
+            // It's a custom name - keep the title, just update the position.
+            conn.execute(
+                "UPDATE documents SET order_index = ?1 WHERE id = ?2",
+                params![new_pos, chap_id],
+            ).map_err(|e| e.to_string())?;
+        }
+    }
 
     Ok(())
 }
