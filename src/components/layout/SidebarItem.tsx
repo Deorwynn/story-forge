@@ -111,7 +111,9 @@ export default function SidebarItem({
             />
           ) : (
             <span
-              className={`text-sm font-semibold truncate ${isActive ? 'text-[#9333ea]' : 'text-slate-700'}`}
+              className={`font-semibold truncate 
+                ${isActive ? 'text-[#9333ea]' : level > 0 ? 'text-slate-600' : 'text-slate-700'}
+                ${level > 0 ? 'text-[13px]' : 'text-sm'}`}
             >
               {title}
             </span>

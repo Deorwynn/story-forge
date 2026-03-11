@@ -71,9 +71,12 @@ export default function ManuscriptContent() {
   };
 
   const handleDelete = async () => {
-    if (!deleteId) return;
+    if (!deleteId || !bookId) return;
     try {
-      await invoke('delete_document', { id: deleteId });
+      await invoke('delete_document', {
+        id: deleteId,
+        book_id: bookId, // Required for cascade re-index
+      });
       setDeleteId(null);
       await refreshDocuments();
     } catch (err) {
@@ -120,7 +123,9 @@ export default function ManuscriptContent() {
     },
   ];
 
-  const chapters = documents.filter((d) => d.docType === 'chapter');
+  const chapters = documents
+    .filter((d) => d.docType === 'chapter')
+    .sort((a, b) => a.orderIndex - b.orderIndex);
 
   if (!isHydrated) {
     return (
@@ -134,13 +139,15 @@ export default function ManuscriptContent() {
     <div className="flex flex-col gap-1">
       {chapters.map((ch) => {
         const isCollapsed = !expandedChapters.has(ch.id);
-        const scenes = documents.filter((d) => d.parentId === ch.id);
+        const scenes = documents
+          .filter((d) => d.parentId === ch.id)
+          .sort((a, b) => a.orderIndex - b.orderIndex);
 
         return (
           <div key={ch.id} className="flex flex-col">
             <SidebarItem
               title={ch.title}
-              subtitle={`0 words • ${scenes.length} scenes`}
+              subtitle={`0 words • ${scenes.length} ${scenes.length === 1 ? 'scene' : 'scenes'}`}
               isCollapsible
               isCollapsed={isCollapsed}
               onToggle={() => toggleChapter(ch.id)}
