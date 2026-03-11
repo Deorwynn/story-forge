@@ -12,9 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "story-forge",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "Story Forge",
+        "width": 1200,
+        "height": 900,
+        "resizable": true,
+        "center": true
       }
     ],
     "security": {
