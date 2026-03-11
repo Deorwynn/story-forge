@@ -53,7 +53,7 @@ export default function ProjectCard({
           </h3>
           <p className="text-[10px] font-bold text-purple-600 uppercase tracking-wider mt-0.5 group-hover:text-purple-700 transition-colors drop-shadow-sm">
             {project.type === 'series'
-              ? `Series (${project.volumes} ${project.volumes === 1 ? 'volume' : 'volumes'})`
+              ? `Series (${project.bookCount} ${project.bookCount === 1 ? 'volume' : 'volumes'})`
               : 'Standalone Novel'}
           </p>
         </div>

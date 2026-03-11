@@ -10,7 +10,7 @@ export interface Project {
   seriesName: string;
   volumeNumber: number;
   type: 'standalone' | 'series';
-  volumes: number;
+  bookCount: number;
   createdAt: number;
   updatedAt: number;
   lastOpened: number;

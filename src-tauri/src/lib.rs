@@ -1,8 +1,15 @@
 use rusqlite::{Connection, params};
 use tauri::Manager;
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
+use std::sync::Mutex;
+
+struct AppState {
+    db: Mutex<rusqlite::Connection>,
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct BookRow {
     id: String,
     title: String,
@@ -16,6 +23,7 @@ struct ProjectRow {
     name: String,
     series_name: String,
     volume_number: i32,
+    #[serde(rename = "type")]
     project_type: String,
     book_count: i32,
     genre: String,
@@ -27,7 +35,7 @@ struct ProjectRow {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct DocumentRow {
+struct ManuscriptDoc {
     id: String,
     project_id: String,
     book_id: Option<String>,
@@ -42,7 +50,7 @@ struct DocumentRow {
     updated_at: i64,
 }
 
-fn init_db(app_handle: &tauri::AppHandle) -> Result<(), String> {
+fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
     let path = get_db_path(app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
@@ -89,76 +97,103 @@ fn init_db(app_handle: &tauri::AppHandle) -> Result<(), String> {
     }
 
     if current_version < 3 {
-    conn.execute_batch(
-    "BEGIN;
-            CREATE TABLE IF NOT EXISTS books (
-            id TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL,
-            title TEXT NOT NULL,
-            description TEXT DEFAULT '',
-            order_index INTEGER NOT NULL,
-            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
-        );
-        PRAGMA user_version = 3;
-        COMMIT;"
-    ).map_err(|e| e.to_string())?;
-}
+        conn.execute_batch(
+            "BEGIN;
+                CREATE TABLE IF NOT EXISTS books (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                order_index INTEGER NOT NULL,
+                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+            PRAGMA user_version = 3;
+            COMMIT;"
+        ).map_err(|e| e.to_string())?;
+    }
 
-if current_version < 4 {
-    conn.execute_batch(
+    if current_version < 4 {
+        conn.execute_batch(
+            "BEGIN;
+            -- Add management columns to projects
+            ALTER TABLE projects ADD COLUMN updated_at INTEGER;
+            ALTER TABLE projects ADD COLUMN deleted_at INTEGER; -- For the Trash system
+
+            -- Add progress tracking to books
+            ALTER TABLE books ADD COLUMN status TEXT DEFAULT 'Planning';
+            ALTER TABLE books ADD COLUMN target_word_count INTEGER DEFAULT 50000;
+
+            -- Update existing rows to have a timestamp
+            UPDATE projects SET updated_at = strftime('%s', 'now') WHERE updated_at IS NULL;
+
+            PRAGMA user_version = 4;
+            COMMIT;"
+        ).map_err(|e| e.to_string())?;
+    }
+
+    if current_version < 5 {
+        conn.execute_batch(
         "BEGIN;
-        -- Add management columns to projects
-        ALTER TABLE projects ADD COLUMN updated_at INTEGER;
-        ALTER TABLE projects ADD COLUMN deleted_at INTEGER; -- For the Trash system
+                CREATE TABLE IF NOT EXISTS documents (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                book_id TEXT, 
+                parent_id TEXT, -- Allows for 'Revisions' of a 'Draft'
+                title TEXT NOT NULL,
+                content TEXT DEFAULT '',
+                doc_type TEXT NOT NULL, -- 'plot', 'chapter', 'note', 'brainstorm'
+                version INTEGER DEFAULT 1,
+                is_archived BOOLEAN DEFAULT 0, -- For old revisions
+                order_index INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE,
+                FOREIGN KEY(parent_id) REFERENCES documents(id) ON DELETE CASCADE
+            );
+            PRAGMA user_version = 5;
+            COMMIT;"
+        ).map_err(|e| e.to_string())?;
+    }
 
-        -- Add progress tracking to books
-        ALTER TABLE books ADD COLUMN status TEXT DEFAULT 'Planning';
-        ALTER TABLE books ADD COLUMN target_word_count INTEGER DEFAULT 50000;
+    if current_version < 6 {
+        conn.execute_batch(
+            "BEGIN;
+            ALTER TABLE projects ADD COLUMN series_name TEXT DEFAULT '';
+            ALTER TABLE projects ADD COLUMN volume_number INTEGER DEFAULT 1;
+            PRAGMA user_version = 6;
+            COMMIT;"
+        ).map_err(|e| e.to_string())?;
+    }
 
-        -- Update existing rows to have a timestamp
-        UPDATE projects SET updated_at = strftime('%s', 'now') WHERE updated_at IS NULL;
+    // Migration: Version 6 -> 7 (Add deleted_at to documents)
+    if current_version < 7 {
+        conn.execute_batch(
+            "BEGIN;
+                ALTER TABLE documents ADD COLUMN deleted_at INTEGER;
+                PRAGMA user_version = 7;
+            COMMIT;"
+        ).map_err(|e| e.to_string())?;
+    }
 
-        PRAGMA user_version = 4;
-        COMMIT;"
-    ).map_err(|e| e.to_string())?;
-}
+    // Migration: Version 7 -> 8 (User Preferences Table)
+    if current_version < 8 {
+        conn.execute_batch(
+            "BEGIN;
+                CREATE TABLE IF NOT EXISTS user_preferences (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    pref_key TEXT NOT NULL,
+                    pref_value TEXT NOT NULL,
+                    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+                CREATE UNIQUE INDEX idx_pref_project_key ON user_preferences(project_id, pref_key);
+                PRAGMA user_version = 8;
+            COMMIT;"
+        ).map_err(|e| e.to_string())?;
+    }
 
-if current_version < 5 {
-    conn.execute_batch(
-    "BEGIN;
-            CREATE TABLE IF NOT EXISTS documents (
-            id TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL,
-            book_id TEXT, 
-            parent_id TEXT, -- Allows for 'Revisions' of a 'Draft'
-            title TEXT NOT NULL,
-            content TEXT DEFAULT '',
-            doc_type TEXT NOT NULL, -- 'plot', 'chapter', 'note', 'brainstorm'
-            version INTEGER DEFAULT 1,
-            is_archived BOOLEAN DEFAULT 0, -- For old revisions
-            order_index INTEGER NOT NULL,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
-            FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE,
-            FOREIGN KEY(parent_id) REFERENCES documents(id) ON DELETE CASCADE
-        );
-        PRAGMA user_version = 5;
-        COMMIT;"
-    ).map_err(|e| e.to_string())?;
-}
-
-if current_version < 6 {
-    conn.execute_batch(
-        "BEGIN;
-        ALTER TABLE projects ADD COLUMN series_name TEXT DEFAULT '';
-        ALTER TABLE projects ADD COLUMN volume_number INTEGER DEFAULT 1;
-        PRAGMA user_version = 6;
-        COMMIT;"
-    ).map_err(|e| e.to_string())?;
-}
-
-    Ok(())
+    Ok(conn)
 }
 
 fn get_db_path(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
@@ -217,6 +252,59 @@ async fn create_book(
     Ok(())
 }
 
+#[tauri::command(rename_all = "snake_case")]
+async fn create_document(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+    book_id: String,
+    parent_id: Option<String>,
+    doc_type: String,
+) -> Result<ManuscriptDoc, String> {
+    let conn = state.db.lock().unwrap();
+    let id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp();
+
+    // Calculate the next order_index
+    // find the current max index for the same parent and book
+    let next_index: i32 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(order_index), -1) + 1 
+            FROM documents 
+            WHERE book_id = ?1 AND parent_id IS ?2 AND deleted_at IS NULL",
+            params![book_id, parent_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let doc = ManuscriptDoc {
+        id: id.clone(),
+        project_id,
+        book_id: Some(book_id),
+        parent_id,
+        title: if doc_type == "chapter" { "New Chapter".into() } else { "New Scene".into() },
+        content: "".into(),
+        doc_type,
+        version: 1,
+        is_archived: false,
+        order_index: next_index,
+        created_at: now,
+        updated_at: now,
+    };
+
+    // Insert into DB
+    conn.execute(
+        "INSERT INTO documents (id, project_id, book_id, parent_id, title, content, doc_type, version, is_archived, order_index, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![
+            doc.id, doc.project_id, doc.book_id, doc.parent_id, 
+            doc.title, doc.content, doc.doc_type, doc.version, 
+            doc.is_archived, doc.order_index, doc.created_at, doc.updated_at
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(doc)
+}
+
 #[tauri::command]
 async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, String> {
     let path = get_db_path(&app_handle)?;
@@ -224,10 +312,19 @@ async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, S
 
     let mut stmt = conn.prepare(
         "SELECT 
-            p.id, p.name, p.series_name, p.volume_number, p.type, p.book_count, p.genre, p.description, p.created_at, p.updated_at,
+            p.id, 
+            p.name, 
+            p.series_name, 
+            p.volume_number, 
+            p.type,
+            p.book_count, 
+            p.genre, 
+            p.description, 
+            p.created_at, 
+            p.updated_at,
             COALESCE(
                 (SELECT json_group_array(
-                    json_object('id', b.id, 'title', b.title, 'order_index', b.order_index)
+                    json_object('id', b.id, 'title', b.title, 'orderIndex', b.order_index)
                 ) FROM books b WHERE b.project_id = p.id),
                 '[]'
             ) as books_json
@@ -266,6 +363,56 @@ async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, S
 }
 
 #[tauri::command]
+async fn get_project_by_id(app_handle: tauri::AppHandle, id: String) -> Result<ProjectRow, String> {
+    let path = get_db_path(&app_handle)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn.prepare(
+        "SELECT 
+            p.id, 
+            p.name, 
+            p.series_name, 
+            p.volume_number, 
+            p.type AS project_type, 
+            p.book_count, 
+            p.genre, 
+            p.description, 
+            p.created_at, 
+            p.updated_at,
+            COALESCE(
+                (SELECT json_group_array(
+                    json_object('id', b.id, 'title', b.title, 'orderIndex', b.order_index)
+                ) FROM books b WHERE b.project_id = p.id),
+                '[]'
+            ) as books_json
+        FROM projects p
+        WHERE p.id = ?1"
+    ).map_err(|e| e.to_string())?;
+
+    let project = stmt.query_row([id], |row| {
+        let books_json: String = row.get(10)?; 
+        let books: Vec<BookRow> = serde_json::from_str(&books_json)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        Ok(ProjectRow {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            series_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            volume_number: row.get::<_, Option<i32>>(3)?.unwrap_or(1),
+            project_type: row.get(4)?,
+            book_count: row.get(5)?,
+            genre: row.get(6)?,
+            description: row.get(7)?,
+            created_at: row.get::<_, Option<i64>>(8)?.unwrap_or(0), 
+            updated_at: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
+            books,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    Ok(project)
+}
+
+#[tauri::command]
 async fn get_project_books(app_handle: tauri::AppHandle, project_id: String) -> Result<Vec<BookRow>, String> {
     let path = get_db_path(&app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
@@ -290,7 +437,7 @@ async fn get_project_books(app_handle: tauri::AppHandle, project_id: String) -> 
 }
 
 #[tauri::command]
-async fn get_book_documents(app_handle: tauri::AppHandle, book_id: String) -> Result<Vec<DocumentRow>, String> {
+async fn get_book_documents(app_handle: tauri::AppHandle, book_id: String) -> Result<Vec<ManuscriptDoc>, String> {
     let path = get_db_path(&app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
@@ -300,13 +447,13 @@ async fn get_book_documents(app_handle: tauri::AppHandle, book_id: String) -> Re
                 id, project_id, book_id, parent_id, title, content, 
                 doc_type, version, is_archived, order_index, created_at, updated_at 
              FROM documents 
-             WHERE book_id = ?1 AND is_archived = 0
+             WHERE book_id = ?1 AND is_archived = 0 AND deleted_at IS NULL
              ORDER BY order_index ASC"
         )
         .map_err(|e| e.to_string())?;
 
     let doc_rows = stmt.query_map([book_id], |row| {
-        Ok(DocumentRow {
+        Ok(ManuscriptDoc {
             id: row.get(0)?,
             project_id: row.get(1)?,
             book_id: row.get(2)?,
@@ -347,6 +494,24 @@ async fn delete_project(app_handle: tauri::AppHandle, id: String) -> Result<(), 
     Ok(())
 }
 
+#[tauri::command(rename_all = "snake_case")]
+async fn delete_document(app_handle: tauri::AppHandle, id: String) -> Result<(), String> {
+    let db_path = get_db_path(&app_handle)?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs() as i64;
+
+    conn.execute(
+        "UPDATE documents SET deleted_at = ?1 WHERE id = ?2",
+        params![now, id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 #[tauri::command]
 async fn get_trashed_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, String> {
     let path = get_db_path(&app_handle)?;
@@ -355,7 +520,7 @@ async fn get_trashed_projects(app_handle: tauri::AppHandle) -> Result<Vec<Projec
     let mut stmt = conn.prepare(
         "SELECT 
             p.id, p.name, p.series_name, p.volume_number, p.type, p.book_count, p.genre, p.description, p.created_at, p.updated_at,
-            COALESCE((SELECT json_group_array(json_object('id', b.id, 'title', b.title, 'order_index', b.order_index)) 
+            COALESCE((SELECT json_group_array(json_object('id', b.id, 'title', b.title, 'orderIndex', b.order_index)) 
             FROM books b WHERE b.project_id = p.id), '[]') as books_json
         FROM projects p
         WHERE p.deleted_at IS NOT NULL
@@ -419,24 +584,174 @@ async fn empty_trash(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command(rename_all = "snake_case")]
+async fn set_expanded_chapters(
+    app_handle: tauri::AppHandle, 
+    project_id: String, 
+    ids: Vec<String>
+) -> Result<(), String> {
+    let path = get_db_path(&app_handle)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    
+    // We store the IDs as a JSON string for simplicity
+    let json_ids = serde_json::to_string(&ids).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO user_preferences (id, project_id, pref_key, pref_value) 
+         VALUES (?1, ?2, 'expanded_chapters', ?3)",
+        params![format!("{}_exp", project_id), project_id, json_ids],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn get_expanded_chapters(
+    app_handle: tauri::AppHandle, 
+    project_id: String
+) -> Result<Vec<String>, String> {
+    let path = get_db_path(&app_handle)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    let res: Result<String, _> = conn.query_row(
+        "SELECT pref_value FROM user_preferences WHERE project_id = ?1 AND pref_key = 'expanded_chapters'",
+        [project_id],
+        |row| row.get(0),
+    );
+
+    match res {
+        Ok(json) => serde_json::from_str(&json).map_err(|e| e.to_string()),
+        Err(_) => Ok(vec![]), // Return empty if not set yet
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn set_last_active_book(
+    app_handle: tauri::AppHandle,
+    project_id: String,
+    book_id: String,
+) -> Result<(), String> {
+    let path = get_db_path(&app_handle)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO user_preferences (id, project_id, pref_key, pref_value) 
+         VALUES (?1, ?2, 'last_active_book', ?3)",
+        params![format!("{}_book", project_id), project_id, book_id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn get_last_active_book(
+    app_handle: tauri::AppHandle,
+    project_id: String,
+) -> Result<String, String> {
+    let path = get_db_path(&app_handle)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    let res: Result<String, _> = conn.query_row(
+        "SELECT pref_value FROM user_preferences WHERE project_id = ?1 AND pref_key = 'last_active_book'",
+        [project_id],
+        |row| row.get(0),
+    );
+
+    res.map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn set_user_preference(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+
+    // We generate a unique ID for the row based on project + key
+    // This matches your existing pattern (e.g., project123_active_tab)
+    let pref_id = format!("{}_{}", project_id, key);
+
+    conn.execute(
+        "INSERT OR REPLACE INTO user_preferences (id, project_id, pref_key, pref_value) 
+         VALUES (?1, ?2, ?3, ?4)",
+        params![pref_id, project_id, key, value],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn get_user_preference(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+    key: String,
+) -> Result<String, String> {
+    let conn = state.db.lock().unwrap();
+
+    let res: Result<String, _> = conn.query_row(
+        "SELECT pref_value FROM user_preferences WHERE project_id = ?1 AND pref_key = ?2",
+        params![project_id, key],
+        |row| row.get(0),
+    );
+
+    match res {
+        Ok(val) => Ok(val),
+        Err(_) => Ok("".to_string()),
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn rename_document(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    new_title: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    let now = chrono::Utc::now().timestamp();
+
+    conn.execute(
+        "UPDATE documents SET title = ?1, updated_at = ?2 WHERE id = ?3",
+        params![new_title, now, id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            init_db(app.handle())?;
+            let conn = init_db(app.handle())?;
+
+            app.manage(AppState {
+                db: Mutex::new(conn),
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             create_project, 
-            get_projects, 
             create_book, 
+            create_document,
+            get_projects, 
             get_project_books, 
             get_book_documents,
+            get_project_by_id,
             delete_project, 
+            delete_document,
             get_trashed_projects, 
             restore_project, 
             purge_project, 
-            empty_trash
+            empty_trash,
+            set_expanded_chapters,
+            get_expanded_chapters,
+            set_last_active_book,
+            get_last_active_book,
+            set_user_preference,
+            get_user_preference,
+            rename_document
             ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
