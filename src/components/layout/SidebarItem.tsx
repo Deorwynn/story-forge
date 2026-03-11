@@ -1,3 +1,5 @@
+import { useState, useEffect, ReactElement, useRef } from 'react';
+import { ChevronRight } from 'lucide-react';
 import ActionMenu, { ActionItem } from '../shared/ActionMenu';
 
 interface SidebarItemProps {
@@ -6,6 +8,13 @@ interface SidebarItemProps {
   actions: ActionItem[];
   onClick?: () => void;
   isActive?: boolean;
+  isCollapsible?: boolean;
+  isCollapsed?: boolean;
+  onToggle?: () => void;
+  level?: number;
+  icon?: ReactElement;
+  onRename?: (newTitle: string) => void;
+  isRenamingInitial?: boolean;
 }
 
 export default function SidebarItem({
@@ -14,34 +23,120 @@ export default function SidebarItem({
   actions,
   onClick,
   isActive,
+  isCollapsible,
+  isCollapsed,
+  onToggle,
+  level = 0,
+  icon,
+  onRename,
+  isRenamingInitial = false,
 }: SidebarItemProps) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(isRenamingInitial);
+  const [editValue, setEditValue] = useState(title);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus input when renaming starts
+  useEffect(() => {
+    if (isRenaming) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [isRenaming]);
+
+  // Sync editValue if title changes externally
+  useEffect(() => {
+    setEditValue(title);
+  }, [title]);
+
+  useEffect(() => {
+    setIsRenaming(isRenamingInitial);
+  }, [isRenamingInitial]);
+
+  const handleBlur = () => {
+    setIsRenaming(false);
+    if (editValue.trim() !== title && onRename) {
+      onRename(editValue.trim());
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleBlur();
+    if (e.key === 'Escape') {
+      setEditValue(title);
+      setIsRenaming(false);
+    }
+  };
+
+  const handleMainClick = () => {
+    if (isCollapsible && onToggle) onToggle();
+    if (onClick) onClick();
+  };
+
   return (
     <div
-      className={`group relative flex items-center gap-1 px-2 py-1 rounded-lg transition-colors 
+      className={`group relative flex items-center rounded-lg transition-colors pr-1
       ${isActive ? 'bg-purple-50' : 'hover:bg-slate-50'}`}
+      style={{ paddingLeft: `${level * 16 + 8}px` }}
     >
       <button
-        onClick={onClick}
-        className="flex flex-1 items-start gap-2 text-sm font-semibold text-left transition-colors cursor-pointer"
+        onClick={handleMainClick}
+        className="flex flex-1 flex-col py-1 text-left transition-colors cursor-pointer min-w-0"
       >
-        <span className="text-[10px] mt-1 text-slate-400 opacity-50 group-hover:opacity-100">
-          ▼
-        </span>
-        <div className="flex flex-col">
-          <span
-            className={`${isActive ? 'text-[#9333ea]' : 'text-slate-700'} group-hover:text-[#9333ea]`}
-          >
-            {title}
-          </span>
-          {subtitle && (
-            <span className="text-[9px] font-normal text-slate-400 uppercase tracking-tight">
-              {subtitle}
+        {/* Top Row: Chevron + Title */}
+        <div className="flex items-center gap-2 w-full">
+          {/* The Chevron slot */}
+          {isCollapsible ? (
+            <ChevronRight
+              className={`w-4 h-4 text-gray-400 flex-shrink-0 
+              ${!isCollapsed ? 'rotate-90' : 'rotate-0'}`}
+            />
+          ) : (
+            /* This invisible spacer keeps scene icons aligned with chapter icons */
+            <div className="w-4 flex-shrink-0" />
+          )}
+
+          {/* The Icon Slot */}
+          {icon && <div className="flex-shrink-0">{icon}</div>}
+
+          {isRenaming ? (
+            <input
+              ref={inputRef}
+              className="text-sm font-semibold bg-white border border-purple-300 rounded px-1 outline-none w-full text-slate-700"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span
+              className={`text-sm font-semibold truncate ${isActive ? 'text-[#9333ea]' : 'text-slate-700'}`}
+            >
+              {title}
             </span>
           )}
         </div>
+
+        {/* Bottom Row: Subtitle */}
+        {subtitle && (
+          <div className="flex items-center gap-2 w-full pl-6">
+            <div className="w-4 flex-shrink-0" />
+            <span className="text-[11px] font-normal text-slate-400 tracking-tight truncate">
+              {subtitle}
+            </span>
+          </div>
+        )}
       </button>
 
-      <ActionMenu actions={actions} />
+      {/* Action Menu: Visible on hover OR if the menu is actually open */}
+      <div
+        className={`flex-shrink-0 transition-opacity ${
+          isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+        }`}
+      >
+        <ActionMenu actions={actions} onOpenChange={setIsMenuOpen} />
+      </div>
     </div>
   );
 }

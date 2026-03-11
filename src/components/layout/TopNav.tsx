@@ -150,7 +150,10 @@ export default function TopNav({
                       <button
                         key={book.id}
                         onClick={() => {
-                          onBookSwitch(book);
+                          onBookSwitch({
+                            ...book,
+                            orderIndex: book.order_index ?? book.orderIndex,
+                          });
                           setIsOpen(false);
                         }}
                         className={`w-full text-left px-4 py-3 rounded-xl transition-all flex flex-col cursor-pointer ${
@@ -160,7 +163,8 @@ export default function TopNav({
                         }`}
                       >
                         <span className="text-[9px] font-bold uppercase opacity-60">
-                          Volume {book.order_index + 1}
+                          Volume{' '}
+                          {(book.order_index ?? book.orderIndex ?? 0) + 1}
                         </span>
                         <span className="text-sm font-semibold">
                           {book.title}

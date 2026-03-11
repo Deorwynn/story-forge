@@ -17,6 +17,7 @@ function App() {
   const [view, setView] = useState<'library' | 'trash'>('library');
   const [documents, setDocuments] = useState<ManuscriptDoc[]>([]);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Hydrate Project State
   const [activeProject, setActiveProject] = useState<Project | null>(() => {
@@ -29,36 +30,98 @@ function App() {
   });
 
   // Hydrate Tab State
-  const [activeTab, setActiveTab] = useState<ForgeView>(() => {
-    return (localStorage.getItem('last_active_tab') as ForgeView) || 'Write';
-  });
+  const [activeTab, setActiveTab] = useState<ForgeView | null>(null);
 
-  // Persistence Sync
+  // Persist Tab to DB when it changes
+  useEffect(() => {
+    const currentBookId =
+      activeProject?.books?.[activeProject.volumeNumber - 1]?.id;
+
+    // The Guard: Only save if we are NOT loading AND we have a real tab selection
+    if (!isInitialLoad && activeProject?.id && currentBookId && activeTab) {
+      invoke('set_user_preference', {
+        project_id: activeProject.id,
+        key: `active_tab_book_${currentBookId}`,
+        value: activeTab,
+      }).catch((err) => console.error('Failed to save tab pref:', err));
+    }
+  }, [activeTab, isInitialLoad]);
+
+  // Persist Project selection to LocalStorage
   useEffect(() => {
     if (activeProject) {
       localStorage.setItem(
         'last_active_project',
         JSON.stringify(activeProject)
       );
-      localStorage.setItem('last_active_tab', activeTab);
     } else {
       localStorage.removeItem('last_active_project');
     }
-  }, [activeProject, activeTab]);
+  }, [activeProject]);
 
   useEffect(() => {
     const syncProjectWithDb = async () => {
-      // fetch the full project if we have an ID but no books array
-      if (activeProject?.id && !activeProject.books) {
-        try {
-          console.log('Syncing project with database...');
-          const fullProject = await invoke<Project>('get_project_by_id', {
-            id: activeProject.id,
-          });
-          setActiveProject(fullProject);
-        } catch (err) {
-          console.error('Failed to sync project:', err);
+      if (!activeProject?.id) return;
+
+      setIsInitialLoad(true);
+
+      try {
+        // Fetch Project Data
+        const rawData = await invoke<any>('get_project_by_id', {
+          id: activeProject.id,
+        });
+        const savedBookId = await invoke<string>('get_last_active_book', {
+          project_id: activeProject.id,
+        }).catch(() => null);
+
+        const rawBooks = rawData.books || [];
+        const bookIdForTabLookup = savedBookId || rawBooks[0]?.id;
+
+        // Fetch Tab Truth
+        let initialTab: ForgeView = 'Write';
+        if (bookIdForTabLookup) {
+          const savedTab = await invoke<string>('get_user_preference', {
+            project_id: activeProject.id,
+            key: `active_tab_book_${bookIdForTabLookup}`,
+          }).catch(() => null);
+          if (savedTab) initialTab = savedTab as ForgeView;
         }
+
+        // Process Project Object
+        const sanitizedBooks = rawBooks.map((b: any) => ({
+          ...b,
+          orderIndex:
+            b.orderIndex !== undefined ? b.orderIndex : (b.order_index ?? 0),
+        }));
+
+        let targetVolume = 1;
+        let currentBookTitle = rawData.name;
+
+        if (savedBookId && sanitizedBooks.length > 0) {
+          const bookIndex = sanitizedBooks.findIndex(
+            (b: any) => b.id === savedBookId
+          );
+          if (bookIndex !== -1) {
+            targetVolume = bookIndex + 1;
+            currentBookTitle = sanitizedBooks[bookIndex].title;
+          }
+        }
+
+        // ATOMIC UPDATE: Set everything, then unlock
+        setActiveTab(initialTab);
+        setActiveProject({
+          ...rawData,
+          id: rawData.id,
+          name: currentBookTitle,
+          books: sanitizedBooks,
+          volumeNumber: targetVolume,
+        });
+      } catch (err) {
+        console.error('Sync failed:', err);
+      } finally {
+        // Essential: wait for the state updates above to flush to the DOM
+        // before allowing the "Save" effect to watch for changes again.
+        setTimeout(() => setIsInitialLoad(false), 300);
       }
     };
 
@@ -110,12 +173,8 @@ function App() {
   };
 
   useEffect(() => {
-    // Only fetch if we actually have an active project and it has a book selected
     setDocuments([]);
-
-    if (activeProject?.id) {
-      fetchDocs();
-    }
+    if (activeProject?.id) fetchDocs();
   }, [activeProject?.id, activeProject?.volumeNumber]);
 
   if (!activeProject) {
@@ -133,20 +192,47 @@ function App() {
     );
   }
 
-  const handleBookSwitch = (book: any) => {
+  const handleBookSwitch = async (book: any) => {
     if (!activeProject) return;
 
+    // Block the Save effect from firing during the switch
+    setIsInitialLoad(true);
+
+    // Update Local UI State
     setActiveProject({
       ...activeProject,
       name: book.title,
-      volumeNumber: book.orderIndex + 1,
+      volumeNumber: (book.orderIndex ?? book.order_index ?? 0) + 1,
     });
 
-    // Later: trigger a re-fetch of
-    // 'documents' (chapters/notes) using the book.id here
+    try {
+      // Persist the book choice
+      await invoke('set_last_active_book', {
+        project_id: activeProject.id,
+        book_id: book.id,
+      });
+
+      // Fetch this book's specific tab
+      const savedTab = await invoke<string>('get_user_preference', {
+        project_id: activeProject.id,
+        key: `active_tab_book_${book.id}`,
+      }).catch(() => null);
+
+      if (savedTab) {
+        setActiveTab(savedTab as ForgeView);
+      } else {
+        setActiveTab('Write');
+      }
+    } catch (err) {
+      console.error('Switch failed:', err);
+    } finally {
+      // Allow saving again after a tiny delay to ensure state has settled
+      setTimeout(() => setIsInitialLoad(false), 100);
+    }
   };
 
-  const CurrentView = VIEW_COMPONENTS[activeTab];
+  const currentTabName = activeTab ?? 'Write';
+  const CurrentView = VIEW_COMPONENTS[currentTabName];
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -156,7 +242,7 @@ function App() {
           setView('library');
         }}
         project={activeProject}
-        activeTab={activeTab}
+        activeTab={currentTabName}
         onTabChange={(tab) => setActiveTab(tab as ForgeView)}
         onBookSwitch={handleBookSwitch}
       />
@@ -173,7 +259,7 @@ function App() {
         }}
       >
         <div className="flex flex-1 overflow-hidden">
-          <Sidebar activeTab={activeTab} />
+          <Sidebar activeTab={currentTabName} />
           <main className="flex-1 overflow-y-auto bg-white">
             {isLoadingDocs ? (
               <div className="flex h-full items-center justify-center">

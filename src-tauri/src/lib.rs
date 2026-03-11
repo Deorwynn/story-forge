@@ -23,6 +23,7 @@ struct ProjectRow {
     name: String,
     series_name: String,
     volume_number: i32,
+    #[serde(rename = "type")]
     project_type: String,
     book_count: i32,
     genre: String,
@@ -96,8 +97,8 @@ fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
     }
 
     if current_version < 3 {
-    conn.execute_batch(
-        "BEGIN;
+        conn.execute_batch(
+            "BEGIN;
                 CREATE TABLE IF NOT EXISTS books (
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
@@ -171,6 +172,23 @@ fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
             "BEGIN;
                 ALTER TABLE documents ADD COLUMN deleted_at INTEGER;
                 PRAGMA user_version = 7;
+            COMMIT;"
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // Migration: Version 7 -> 8 (User Preferences Table)
+    if current_version < 8 {
+        conn.execute_batch(
+            "BEGIN;
+                CREATE TABLE IF NOT EXISTS user_preferences (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    pref_key TEXT NOT NULL,
+                    pref_value TEXT NOT NULL,
+                    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+                CREATE UNIQUE INDEX idx_pref_project_key ON user_preferences(project_id, pref_key);
+                PRAGMA user_version = 8;
             COMMIT;"
         ).map_err(|e| e.to_string())?;
     }
@@ -294,7 +312,16 @@ async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, S
 
     let mut stmt = conn.prepare(
         "SELECT 
-            p.id, p.name, p.series_name, p.volume_number, p.type, p.book_count, p.genre, p.description, p.created_at, p.updated_at,
+            p.id, 
+            p.name, 
+            p.series_name, 
+            p.volume_number, 
+            p.type,
+            p.book_count, 
+            p.genre, 
+            p.description, 
+            p.created_at, 
+            p.updated_at,
             COALESCE(
                 (SELECT json_group_array(
                     json_object('id', b.id, 'title', b.title, 'orderIndex', b.order_index)
@@ -342,10 +369,19 @@ async fn get_project_by_id(app_handle: tauri::AppHandle, id: String) -> Result<P
 
     let mut stmt = conn.prepare(
         "SELECT 
-            p.id, p.name, p.series_name, p.volume_number, p.type, p.book_count, p.genre, p.description, p.created_at, p.updated_at,
+            p.id, 
+            p.name, 
+            p.series_name, 
+            p.volume_number, 
+            p.type AS project_type, 
+            p.book_count, 
+            p.genre, 
+            p.description, 
+            p.created_at, 
+            p.updated_at,
             COALESCE(
                 (SELECT json_group_array(
-                    json_object('id', b.id, 'title', b.title, 'order_index', b.order_index)
+                    json_object('id', b.id, 'title', b.title, 'orderIndex', b.order_index)
                 ) FROM books b WHERE b.project_id = p.id),
                 '[]'
             ) as books_json
@@ -484,7 +520,7 @@ async fn get_trashed_projects(app_handle: tauri::AppHandle) -> Result<Vec<Projec
     let mut stmt = conn.prepare(
         "SELECT 
             p.id, p.name, p.series_name, p.volume_number, p.type, p.book_count, p.genre, p.description, p.created_at, p.updated_at,
-            COALESCE((SELECT json_group_array(json_object('id', b.id, 'title', b.title, 'order_index', b.order_index)) 
+            COALESCE((SELECT json_group_array(json_object('id', b.id, 'title', b.title, 'orderIndex', b.order_index)) 
             FROM books b WHERE b.project_id = p.id), '[]') as books_json
         FROM projects p
         WHERE p.deleted_at IS NOT NULL
@@ -548,6 +584,141 @@ async fn empty_trash(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command(rename_all = "snake_case")]
+async fn set_expanded_chapters(
+    app_handle: tauri::AppHandle, 
+    project_id: String, 
+    ids: Vec<String>
+) -> Result<(), String> {
+    let path = get_db_path(&app_handle)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    
+    // We store the IDs as a JSON string for simplicity
+    let json_ids = serde_json::to_string(&ids).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO user_preferences (id, project_id, pref_key, pref_value) 
+         VALUES (?1, ?2, 'expanded_chapters', ?3)",
+        params![format!("{}_exp", project_id), project_id, json_ids],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn get_expanded_chapters(
+    app_handle: tauri::AppHandle, 
+    project_id: String
+) -> Result<Vec<String>, String> {
+    let path = get_db_path(&app_handle)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    let res: Result<String, _> = conn.query_row(
+        "SELECT pref_value FROM user_preferences WHERE project_id = ?1 AND pref_key = 'expanded_chapters'",
+        [project_id],
+        |row| row.get(0),
+    );
+
+    match res {
+        Ok(json) => serde_json::from_str(&json).map_err(|e| e.to_string()),
+        Err(_) => Ok(vec![]), // Return empty if not set yet
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn set_last_active_book(
+    app_handle: tauri::AppHandle,
+    project_id: String,
+    book_id: String,
+) -> Result<(), String> {
+    let path = get_db_path(&app_handle)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO user_preferences (id, project_id, pref_key, pref_value) 
+         VALUES (?1, ?2, 'last_active_book', ?3)",
+        params![format!("{}_book", project_id), project_id, book_id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn get_last_active_book(
+    app_handle: tauri::AppHandle,
+    project_id: String,
+) -> Result<String, String> {
+    let path = get_db_path(&app_handle)?;
+    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+
+    let res: Result<String, _> = conn.query_row(
+        "SELECT pref_value FROM user_preferences WHERE project_id = ?1 AND pref_key = 'last_active_book'",
+        [project_id],
+        |row| row.get(0),
+    );
+
+    res.map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn set_user_preference(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+
+    // We generate a unique ID for the row based on project + key
+    // This matches your existing pattern (e.g., project123_active_tab)
+    let pref_id = format!("{}_{}", project_id, key);
+
+    conn.execute(
+        "INSERT OR REPLACE INTO user_preferences (id, project_id, pref_key, pref_value) 
+         VALUES (?1, ?2, ?3, ?4)",
+        params![pref_id, project_id, key, value],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn get_user_preference(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+    key: String,
+) -> Result<String, String> {
+    let conn = state.db.lock().unwrap();
+
+    let res: Result<String, _> = conn.query_row(
+        "SELECT pref_value FROM user_preferences WHERE project_id = ?1 AND pref_key = ?2",
+        params![project_id, key],
+        |row| row.get(0),
+    );
+
+    match res {
+        Ok(val) => Ok(val),
+        Err(_) => Ok("".to_string()),
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn rename_document(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    new_title: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    let now = chrono::Utc::now().timestamp();
+
+    conn.execute(
+        "UPDATE documents SET title = ?1, updated_at = ?2 WHERE id = ?3",
+        params![new_title, now, id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -573,7 +744,14 @@ pub fn run() {
             get_trashed_projects, 
             restore_project, 
             purge_project, 
-            empty_trash
+            empty_trash,
+            set_expanded_chapters,
+            get_expanded_chapters,
+            set_last_active_book,
+            get_last_active_book,
+            set_user_preference,
+            get_user_preference,
+            rename_document
             ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
