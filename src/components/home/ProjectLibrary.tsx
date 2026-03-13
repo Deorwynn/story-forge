@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Project } from '../../types/project';
 import { mapRawProject } from '../../utils/projectMapper';
 import NewProjectForm from './NewProjectForm';
+import EditProjectForm from './EditProjectForm';
 import ProjectCard from './ProjectCard';
 import Button from '../shared/Button';
 import ConfirmModal from '../shared/ConfirmModal';
@@ -20,6 +21,7 @@ export default function ProjectLibrary({
   const [existingProjects, setExistingProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -53,7 +55,7 @@ export default function ProjectLibrary({
   };
 
   const handleEdit = (p: Project) => {
-    console.log(`[ProjectLibrary] Action: Edit Project ${p.name}`);
+    setEditingProject(p);
   };
 
   if (isLoading)
@@ -132,6 +134,27 @@ export default function ProjectLibrary({
             setIsCreating(false);
           }}
           onCancel={() => setIsCreating(false)}
+        />
+      )}
+
+      {editingProject && (
+        <EditProjectForm
+          project={editingProject}
+          onCancel={() => setEditingProject(null)}
+          onConfirm={(updated) => {
+            // 1. Check if the project was deleted inside the edit form
+            if ((updated as any).id === 'DELETED') {
+              setExistingProjects((prev) =>
+                prev.filter((p) => p.id !== editingProject.id)
+              );
+            } else {
+              // 2. Otherwise, update the existing project in the list
+              setExistingProjects((prev) =>
+                prev.map((p) => (p.id === updated.id ? updated : p))
+              );
+            }
+            setEditingProject(null);
+          }}
         />
       )}
 

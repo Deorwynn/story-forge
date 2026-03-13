@@ -506,6 +506,42 @@ async fn delete_project(app_handle: tauri::AppHandle, id: String) -> Result<(), 
 }
 
 #[tauri::command(rename_all = "snake_case")]
+async fn delete_book(state: tauri::State<'_, AppState>, id: String, project_id: String) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    let now = chrono::Utc::now().timestamp();
+
+    // 1. Delete the book (Cascades to documents)
+    conn.execute("DELETE FROM books WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+
+    // 2. Update the project timestamp
+    conn.execute(
+        "UPDATE projects SET updated_at = ?1 WHERE id = ?2",
+        params![now, project_id],
+    ).map_err(|e| e.to_string())?;
+
+    // 3. Optional: Re-sequence remaining books' order_index
+    let mut stmt = conn.prepare(
+        "SELECT id FROM books WHERE project_id = ?1 ORDER BY order_index ASC"
+    ).map_err(|e| e.to_string())?;
+    
+    let book_ids: Vec<String> = stmt
+        .query_map([project_id], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    for (i, b_id) in book_ids.iter().enumerate() {
+        conn.execute(
+            "UPDATE books SET order_index = ?1 WHERE id = ?2",
+            params![i as i32, b_id],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
 async fn delete_document(
     state: tauri::State<'_, AppState>, 
     id: String, 
@@ -806,6 +842,7 @@ pub fn run() {
             get_book_documents,
             get_project_by_id,
             delete_project, 
+            delete_book,
             delete_document,
             get_trashed_projects, 
             restore_project, 

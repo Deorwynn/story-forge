@@ -115,9 +115,16 @@ export default function TrashView({ onBack }: { onBack: () => void }) {
                 `}
               >
                 <div>
-                  <h3 className="font-bold text-slate-800">{project.name}</h3>
+                  <h3 className="font-bold text-slate-800">
+                    {/* Use the same logic as your ProjectCard */}
+                    {project.type === 'series'
+                      ? project.seriesName
+                      : project.name}
+                  </h3>
                   <p className="text-xs text-slate-400 uppercase tracking-widest">
-                    {project.type}
+                    {project.type}{' '}
+                    {project.type === 'series' &&
+                      `(${project.books?.length} volumes)`}
                   </p>
                 </div>
                 <div className="flex gap-3">
