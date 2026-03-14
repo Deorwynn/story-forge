@@ -139,21 +139,20 @@ export default function ProjectLibrary({
 
       {editingProject && (
         <EditProjectForm
+          key={editingProject.id}
           project={editingProject}
           onCancel={() => setEditingProject(null)}
           onConfirm={(updated) => {
-            // 1. Check if the project was deleted inside the edit form
             if ((updated as any).id === 'DELETED') {
               setExistingProjects((prev) =>
                 prev.filter((p) => p.id !== editingProject.id)
               );
+              setEditingProject(null);
             } else {
-              // 2. Otherwise, update the existing project in the list
               setExistingProjects((prev) =>
                 prev.map((p) => (p.id === updated.id ? updated : p))
               );
             }
-            setEditingProject(null);
           }}
         />
       )}

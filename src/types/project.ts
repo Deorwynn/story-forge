@@ -15,8 +15,7 @@ export interface Project {
   updatedAt: number;
   lastOpened: number;
   cloudSyncId?: string;
-  genre: string;
-  genres?: string[];
+  genres: string[];
   description: string;
   books: Book[];
   pov?: string;
