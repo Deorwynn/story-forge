@@ -70,6 +70,7 @@ function App() {
         const rawData = await invoke<any>('get_project_by_id', {
           id: activeProject.id,
         });
+
         const savedBookId = await invoke<string>('get_last_active_book', {
           project_id: activeProject.id,
         }).catch(() => null);
@@ -115,12 +116,12 @@ function App() {
           name: currentBookTitle,
           books: sanitizedBooks,
           volumeNumber: targetVolume,
+          genres: Array.isArray(rawData.genres) ? rawData.genres : [],
+          pov: rawData.pov || 'First Person',
         });
       } catch (err) {
         console.error('Sync failed:', err);
       } finally {
-        // Essential: wait for the state updates above to flush to the DOM
-        // before allowing the "Save" effect to watch for changes again.
         setTimeout(() => setIsInitialLoad(false), 300);
       }
     };

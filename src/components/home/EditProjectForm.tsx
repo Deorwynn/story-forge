@@ -20,6 +20,7 @@ import ModalShell from '../shared/ModalShell';
 import Button from '../shared/Button';
 import VolumeManager from './VolumeManager';
 import ConfirmModal from '../shared/ConfirmModal';
+import GenreSelector from './GenreSelector';
 import { invoke } from '@tauri-apps/api/core';
 
 export const GENRES = [
@@ -60,7 +61,7 @@ export default function EditProjectForm({
   const [description, setDescription] = useState(project.description || '');
   const [pov, setPov] = useState(project.pov || 'First Person');
   const [selectedGenres, setSelectedGenres] = useState<string[]>(
-    project.genres || (project.genre ? [project.genre] : [])
+    Array.isArray(project.genres) ? project.genres : []
   );
 
   const [bookTitles, setBookTitles] = useState<string[]>(
@@ -77,14 +78,6 @@ export default function EditProjectForm({
     isLastTwo?: boolean;
   } | null>(null);
 
-  const toggleGenre = (label: string) => {
-    if (selectedGenres.includes(label)) {
-      setSelectedGenres(selectedGenres.filter((g) => g !== label));
-    } else if (selectedGenres.length < 3) {
-      setSelectedGenres([...selectedGenres, label]);
-    }
-  };
-
   const isFormValid = name.trim() !== '' && selectedGenres.length > 0;
 
   const handleSave = async () => {
@@ -94,20 +87,55 @@ export default function EditProjectForm({
         id: project.id,
         name: type === 'standalone' ? name : project.name,
         series_name: type === 'series' ? name : '',
+        volume_number: project.volumeNumber || 1,
         description,
-        genre: selectedGenres[0] || '',
         genres: selectedGenres,
         project_type: type,
         pov,
+        book_count: type === 'series' ? bookTitles.length : 1,
       };
 
       await invoke('update_project', updatedPayload);
 
+      // If it's a series, handle the book titles
+      const updatedBooksForState: any[] = [];
+
+      if (type === 'series') {
+        for (let i = 0; i < bookTitles.length; i++) {
+          const existingBook = project.books?.[i];
+          const title = bookTitles[i];
+
+          if (existingBook) {
+            // Update existing book title if it changed
+            await invoke('update_book_title', { id: existingBook.id, title });
+            updatedBooksForState.push({ ...existingBook, title });
+          } else {
+            // Create new book if it's a new volume added in the manager
+            const newBookId = crypto.randomUUID();
+            await invoke('create_book', {
+              id: newBookId,
+              projectId: project.id,
+              title: title || `Volume ${i + 1}`,
+              orderIndex: i,
+            });
+            updatedBooksForState.push({ id: newBookId, title, orderIndex: i });
+          }
+        }
+      }
+
       onConfirm({
         ...project,
-        ...updatedPayload,
-        type,
+        name: updatedPayload.name,
+        seriesName: updatedPayload.series_name,
+        volumeNumber: updatedPayload.volume_number,
+        description: updatedPayload.description,
+        genres: updatedPayload.genres,
+        type: type,
+        pov: updatedPayload.pov,
+        bookCount: bookTitles.length,
+        books: type === 'series' ? updatedBooksForState : project.books,
       } as Project);
+      onCancel();
     } catch (err) {
       console.error('Failed to save project:', err);
     } finally {
@@ -122,7 +150,7 @@ export default function EditProjectForm({
 
     try {
       if (deleteConfirm.target === 'book') {
-        // 1. Soft delete the book
+        // Soft delete the book
         await invoke('delete_book', {
           id: deleteConfirm.id,
           project_id: project.id,
@@ -130,6 +158,7 @@ export default function EditProjectForm({
 
         const updatedBooks =
           project.books?.filter((b) => b.id !== deleteConfirm.id) || [];
+        const newCount = updatedBooks.length;
 
         if (deleteConfirm.isLastTwo) {
           // Handle Standalone conversion logic
@@ -141,10 +170,10 @@ export default function EditProjectForm({
             name: newName,
             project_type: 'standalone',
             series_name: '',
-            genre: selectedGenres[0] || '',
             genres: selectedGenres,
             pov,
             description,
+            book_count: 1,
           };
 
           await invoke('update_project', updatePayload);
@@ -152,33 +181,22 @@ export default function EditProjectForm({
           onConfirm({
             ...project,
             ...updatePayload,
+            seriesName: '',
             type: 'standalone',
             books: updatedBooks,
             name: newName,
             bookCount: 1,
-          } as any);
+          } as Project);
         } else {
           onConfirm({
             ...project,
             books: updatedBooks,
-            bookCount: updatedBooks.length,
-          } as any);
+            bookCount: newCount,
+            type: updatedBooks.length <= 1 ? 'standalone' : project.type,
+          } as Project);
         }
       } else {
-        // --- PROJECT DELETION ---
         await invoke('delete_project', { id: project.id });
-
-        // Instead of reloading, we call a hypothetical onDelete or use onConfirm
-        // with a special flag. If your parent component handles the list,
-        // let's try to trigger a refresh via the 'onConfirm' but passing null.
-        // NOTE: Adjust 'onConfirm' to handle a 'deleted' state if possible.
-
-        // If your parent component is using an array.filter, you'd usually do:
-        // onConfirm({ ...project, isDeleted: true } as any);
-
-        // For now, let's assume onCancel closes it, and we refresh the list
-        // manually if the parent allows. If not, the reload is the safest
-        // "1-hour deadline" fix, but try this first:
         onConfirm({ ...project, id: 'DELETED' } as any);
         onCancel();
       }
@@ -344,38 +362,25 @@ export default function EditProjectForm({
                       </span>
                     </div>
                     <h3 className="text-xl font-bold italic">
-                      Select Genres{' '}
+                      Select Genres
                       <span className="text-slate-400 text-xs not-italic font-normal ml-2">
                         (Up to 3)
                       </span>
                     </h3>
-                    <div className="grid grid-cols-3 gap-3">
-                      {GENRES.map((g) => {
-                        const isSelected = selectedGenres.includes(g.label);
-                        const isDisabled =
-                          !isSelected && selectedGenres.length >= 3;
-                        return (
-                          <button
-                            key={g.label}
-                            disabled={isDisabled}
-                            onClick={() => toggleGenre(g.label)}
-                            className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all
-                              ${
-                                isSelected
-                                  ? 'border-[#9333ea] bg-[#9333ea] text-white shadow-lg shadow-purple-200'
-                                  : isDisabled
-                                    ? 'opacity-40 grayscale cursor-not-allowed border-slate-50 bg-slate-50'
-                                    : 'border-slate-50 bg-slate-50 text-slate-500 hover:border-slate-200'
-                              }`}
-                          >
-                            {g.icon}
-                            <span className="text-xs font-bold uppercase tracking-tight">
-                              {g.label}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+
+                    <GenreSelector
+                      selected={selectedGenres}
+                      onToggle={(label) => {
+                        if (selectedGenres.includes(label)) {
+                          setSelectedGenres((prev) =>
+                            prev.filter((g) => g !== label)
+                          );
+                        } else if (selectedGenres.length < 3) {
+                          setSelectedGenres((prev) => [...prev, label]);
+                        }
+                      }}
+                    />
+
                     <Button variant="ghost" onClick={() => setSubView(null)}>
                       Back to General
                     </Button>
@@ -443,14 +448,14 @@ export default function EditProjectForm({
                             isLastTwo: (project.books?.length || 0) <= 2,
                           })
                         }
-                        className="text-red-400 hover:text-red-600 p-2"
+                        className="text-red-400 hover:text-red-600 p-2 cursor-pointer"
                       >
-                        <Ghost size={18} />
+                        <Trash2 size={18} />
                       </button>
                     </div>
                   ))}
 
-                {/* FIXED: Project Delete Button */}
+                {/* Project Delete Button */}
                 <div className="p-6 border-2 border-red-100 rounded-2xl bg-red-50/30">
                   <h3 className="text-red-600 font-bold text-[10px] uppercase mb-2">
                     Trash Project
@@ -527,7 +532,6 @@ export default function EditProjectForm({
                 }
               : executeVolumeDelete
           }
-          // This now works because onCancel can be undefined
           onCancel={
             modalError
               ? undefined

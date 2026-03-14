@@ -77,9 +77,20 @@ export default function ProjectCard({
         {/* Footer Area */}
         <div className="mt-auto">
           <div className="flex flex-wrap gap-2 mb-4">
-            <span className="px-2.5 py-1 rounded-lg bg-purple-100/50 text-[#9333ea] text-[10px] font-bold uppercase tracking-tight border border-purple-200/50">
-              {project.genre || 'General'}
-            </span>
+            {project.genres && project.genres.length > 0 ? (
+              project.genres.map((g) => (
+                <span
+                  key={g}
+                  className="px-2.5 py-1 rounded-lg bg-purple-100/50 text-[#9333ea] text-[10px] font-bold uppercase tracking-tight border border-purple-200/50"
+                >
+                  {g}
+                </span>
+              ))
+            ) : (
+              <span className="px-2.5 py-1 rounded-lg bg-purple-100/50 text-[#9333ea] text-[10px] font-bold uppercase tracking-tight border border-purple-200/50">
+                General
+              </span>
+            )}
           </div>
 
           <div

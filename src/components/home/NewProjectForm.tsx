@@ -17,7 +17,6 @@ export default function NewProjectForm({
   const [isSaving, setIsSaving] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [type, setType] = useState<'standalone' | 'series'>('standalone');
-  const [genre, setGenre] = useState('Fantasy');
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [description, setDescription] = useState('');
 
@@ -25,6 +24,7 @@ export default function NewProjectForm({
   const [seriesTitle, setSeriesTitle] = useState('');
   const [bookCount, setBookCount] = useState(3);
   const [bookTitles, setBookTitles] = useState<string[]>([]);
+  const [pov, setPov] = useState('');
 
   const isFormValid =
     inputValue.trim() !== '' &&
@@ -68,7 +68,8 @@ export default function NewProjectForm({
         volumeNumber: 1,
         projectType: type,
         bookCount: type === 'series' ? bookCount : 1,
-        genre,
+        genres: selectedGenres,
+        pov: pov,
         description,
       });
 
@@ -104,10 +105,11 @@ export default function NewProjectForm({
         seriesName: finalSeriesName,
         volumeNumber: 1,
         type: type,
-        volumes: type === 'series' ? bookCount : 1,
+        bookCount: type === 'series' ? bookCount : 1,
         createdAt: now,
         updatedAt: now,
-        genre,
+        genres: selectedGenres,
+        pov: pov,
         description,
         books: generatedBooks,
       } as any);
@@ -204,6 +206,31 @@ export default function NewProjectForm({
                   }
                 }}
               />
+            </div>
+
+            {/* POV SECTION */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
+                Point of View
+              </label>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                {[
+                  'First Person',
+                  'Third Limited',
+                  'Omniscient',
+                  'Second Person',
+                ].map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPov(p)}
+                    className={`py-3 px-2 rounded-xl border-2 text-[10px] font-bold uppercase tracking-tight transition-all 
+                              ${pov === p ? 'border-[#9333ea] bg-purple-50 text-[#9333ea] shadow-sm' : 'border-slate-50 bg-slate-50 text-slate-400 hover:border-slate-200'}`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
             </div>
           </>
         ) : (

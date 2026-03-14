@@ -1,6 +1,5 @@
 use rusqlite::{Connection, params};
 use tauri::Manager;
-use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 use std::sync::Mutex;
 
@@ -16,7 +15,7 @@ struct BookRow {
     order_index: i32,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ProjectRow {
     id: String,
@@ -26,7 +25,8 @@ struct ProjectRow {
     #[serde(rename = "type")]
     project_type: String,
     book_count: i32,
-    genre: String,
+    genres: Vec<String>,
+    pov: String,
     description: String,
     created_at: i64,
     updated_at: i64,
@@ -54,7 +54,15 @@ fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
     let path = get_db_path(app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
+    let _ = conn.execute("ALTER TABLE projects ADD COLUMN genres TEXT DEFAULT '[]'", ());
+    let _ = conn.execute("ALTER TABLE projects ADD COLUMN pov TEXT DEFAULT ''", ());
+    let _ = conn.execute("ALTER TABLE projects ADD COLUMN series_name TEXT DEFAULT ''", ());
+    let _ = conn.execute("ALTER TABLE projects ADD COLUMN volume_number INTEGER DEFAULT 1", ());
+
     let _ : String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0)).map_err(|e| e.to_string())?;
+
+    let _ = conn.execute("ALTER TABLE projects ADD COLUMN project_type TEXT DEFAULT 'standalone'", ());
+    let _ = conn.execute("ALTER TABLE projects ADD COLUMN genres TEXT DEFAULT '[]'", ());
 
     // Get current version
     let current_version: i32 = conn
@@ -193,6 +201,16 @@ fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
         ).map_err(|e| e.to_string())?;
     }
 
+    if current_version < 9 {
+        conn.execute_batch(
+            "BEGIN;
+                ALTER TABLE projects ADD COLUMN genres TEXT DEFAULT '[]';
+                ALTER TABLE projects ADD COLUMN pov TEXT DEFAULT '';
+                PRAGMA user_version = 9;
+            COMMIT;"
+        ).map_err(|e| e.to_string())?;
+    }
+
     Ok(conn)
 }
 
@@ -204,28 +222,47 @@ fn get_db_path(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, Stri
 
 #[tauri::command]
 async fn create_project(
-    app_handle: tauri::AppHandle, 
+    state: tauri::State<'_, AppState>,
     id: String, 
     name: String, 
     series_name: String,
     volume_number: i32,
     project_type: String, 
     book_count: i32,
-    genre: String,
+    genres: Vec<String>,
+    pov: String,
     description: String,
 ) -> Result<(), String> {
-    let path = get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    let conn = state.db.lock().unwrap();
+    let now = chrono::Utc::now().timestamp();
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_secs() as i64;
+    // Convert the array to a JSON string for the source-of-truth column
+    let genres_json = serde_json::to_string(&genres).unwrap_or_else(|_| "[]".to_string());
+    
+    // Derive the legacy single-string column from the first selection
+    // Using an empty string as fallback to stay consistent with our update/fetch logic
+    let primary_genre = genres.first().cloned().unwrap_or_default();
 
     conn.execute(
-        "INSERT INTO projects (id, name, series_name, volume_number, type, book_count, created_at, updated_at, genre, description) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        (id, name, series_name, volume_number, project_type, book_count, now, now, genre, description),
+        "INSERT INTO projects (
+            id, name, series_name, volume_number, type, 
+            book_count, created_at, updated_at, genre, genres, pov, description
+        ) 
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        (
+            id, 
+            name, 
+            series_name, 
+            volume_number, 
+            project_type, 
+            book_count, 
+            now, 
+            now, 
+            primary_genre, 
+            genres_json, 
+            pov, 
+            description
+        ),
     ).map_err(|e| e.to_string())?;
 
     Ok(())
@@ -233,16 +270,13 @@ async fn create_project(
 
 #[tauri::command]
 async fn create_book(
-    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
     id: String,
     project_id: String,
     title: String,
     order_index: i32,
 ) -> Result<(), String> {
-    let path = get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
-
-    let _ : String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0)).map_err(|e| e.to_string())?;
+    let conn = state.db.lock().unwrap();
 
     conn.execute(
         "INSERT INTO books (id, project_id, title, order_index) VALUES (?1, ?2, ?3, ?4)",
@@ -317,9 +351,8 @@ async fn create_document(
 }
 
 #[tauri::command]
-async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, String> {
-    let path = get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+async fn get_projects(state: tauri::State<'_, AppState>) -> Result<Vec<ProjectRow>, String> {
+    let conn = state.db.lock().unwrap();
 
     let mut stmt = conn.prepare(
         "SELECT 
@@ -328,9 +361,10 @@ async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, S
             p.series_name, 
             p.volume_number, 
             p.type,
-            p.book_count, 
-            p.genre, 
-            p.description, 
+            (SELECT COUNT(*) FROM books WHERE project_id = p.id) as actual_book_count, 
+            p.genres, 
+            p.pov, 
+            p.description,
             p.created_at, 
             p.updated_at,
             COALESCE(
@@ -345,38 +379,44 @@ async fn get_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, S
     ).map_err(|e| e.to_string())?;
 
     let project_rows = stmt.query_map([], |row| {
-        // Parse the JSON string back into our BookRow vector
-        let books_json: String = row.get(10)?; 
-        let books: Vec<BookRow> = serde_json::from_str(&books_json)
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        // Handle Genres: fetch raw string, default to empty array JSON if null
+        let genres_raw: String = row.get::<&str, Option<String>>("genres")?
+            .unwrap_or_else(|| "[]".to_string());
 
+        // Parse genres JSON string into Vec<String>
+        let parsed_genres: Vec<String> = serde_json::from_str(&genres_raw).unwrap_or_else(|_| {
+            // Fallback: If it's not valid JSON but has text, wrap that text in a vec
+            if !genres_raw.is_empty() && genres_raw != "[]" {
+                vec![genres_raw]
+            } else {
+                vec![]
+            }
+        });
+
+        let books_json: String = row.get::<&str, String>("books_json").unwrap_or_else(|_| "[]".to_string());
+        
         Ok(ProjectRow {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            series_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-            volume_number: row.get::<_, Option<i32>>(3)?.unwrap_or(1),
-            project_type: row.get(4)?,
-            book_count: row.get(5)?,
-            genre: row.get(6)?,
-            description: row.get(7)?,
-            created_at: row.get::<_, Option<i64>>(8)?.unwrap_or(0), 
-            updated_at: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
-            books,
+            id: row.get("id")?,
+            name: row.get("name")?,
+            series_name: row.get::<&str, Option<String>>("series_name")?.unwrap_or_default(),
+            volume_number: row.get::<&str, Option<i32>>("volume_number")?.unwrap_or(1),
+            project_type: row.get("type")?,
+            book_count: row.get("actual_book_count")?,
+            genres: parsed_genres,
+            pov: row.get::<&str, Option<String>>("pov")?.unwrap_or_default(),
+            description: row.get::<&str, Option<String>>("description")?.unwrap_or_default(),
+            created_at: row.get::<&str, Option<i64>>("created_at")?.unwrap_or(0), 
+            updated_at: row.get::<&str, Option<i64>>("updated_at")?.unwrap_or(0),
+            books: serde_json::from_str(&books_json).unwrap_or_else(|_| vec![]),
         })
     }).map_err(|e| e.to_string())?;
 
-    let mut projects = Vec::new();
-    for project in project_rows {
-        projects.push(project.map_err(|e| e.to_string())?);
-    }
-
-    Ok(projects)
+    project_rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_project_by_id(app_handle: tauri::AppHandle, id: String) -> Result<ProjectRow, String> {
-    let path = get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+async fn get_project_by_id(state: tauri::State<'_, AppState>, id: String) -> Result<ProjectRow, String> {
+    let conn = state.db.lock().unwrap();
 
     let mut stmt = conn.prepare(
         "SELECT 
@@ -384,39 +424,41 @@ async fn get_project_by_id(app_handle: tauri::AppHandle, id: String) -> Result<P
             p.name, 
             p.series_name, 
             p.volume_number, 
-            p.type AS project_type, 
+            p.type, 
             p.book_count, 
-            p.genre, 
+            p.genres, 
+            p.pov, 
             p.description, 
             p.created_at, 
-            p.updated_at,
+            p.updated_at, 
             COALESCE(
                 (SELECT json_group_array(
                     json_object('id', b.id, 'title', b.title, 'orderIndex', b.order_index)
                 ) FROM books b WHERE b.project_id = p.id),
                 '[]'
-            ) as books_json
+            ) as books_json 
         FROM projects p
         WHERE p.id = ?1"
     ).map_err(|e| e.to_string())?;
 
     let project = stmt.query_row([id], |row| {
-        let books_json: String = row.get(10)?; 
-        let books: Vec<BookRow> = serde_json::from_str(&books_json)
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let genres_raw: String = row.get("genres").unwrap_or_else(|_| "[]".to_string());
+        let books_raw: String = row.get("books_json").unwrap_or_else(|_| "[]".to_string()); 
 
         Ok(ProjectRow {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            series_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-            volume_number: row.get::<_, Option<i32>>(3)?.unwrap_or(1),
-            project_type: row.get(4)?,
-            book_count: row.get(5)?,
-            genre: row.get(6)?,
-            description: row.get(7)?,
-            created_at: row.get::<_, Option<i64>>(8)?.unwrap_or(0), 
-            updated_at: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
-            books,
+            id: row.get("id")?,
+            name: row.get("name")?,
+            series_name: row.get::<_, Option<String>>("series_name")?.unwrap_or_default(),
+            volume_number: row.get::<_, Option<i32>>("volume_number")?.unwrap_or(1),
+            project_type: row.get("type")?,
+            book_count: row.get("book_count")?,
+            // genre field removed to match updated ProjectRow struct
+            genres: serde_json::from_str(&genres_raw).unwrap_or_else(|_| vec![]),
+            pov: row.get::<_, Option<String>>("pov")?.unwrap_or_default(),
+            description: row.get::<_, Option<String>>("description")?.unwrap_or_default(),
+            created_at: row.get::<_, Option<i64>>("created_at")?.unwrap_or(0), 
+            updated_at: row.get::<_, Option<i64>>("updated_at")?.unwrap_or(0),
+            books: serde_json::from_str(&books_raw).unwrap_or_else(|_| vec![]),
         })
     }).map_err(|e| e.to_string())?;
 
@@ -424,9 +466,11 @@ async fn get_project_by_id(app_handle: tauri::AppHandle, id: String) -> Result<P
 }
 
 #[tauri::command]
-async fn get_project_books(app_handle: tauri::AppHandle, project_id: String) -> Result<Vec<BookRow>, String> {
-    let path = get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+async fn get_project_books(
+    state: tauri::State<'_, AppState>, 
+    project_id: String
+) -> Result<Vec<BookRow>, String> {
+    let conn = state.db.lock().unwrap();
 
     let mut stmt = conn
         .prepare("SELECT id, title, order_index FROM books WHERE project_id = ?1 ORDER BY order_index ASC")
@@ -440,17 +484,16 @@ async fn get_project_books(app_handle: tauri::AppHandle, project_id: String) -> 
         })
     }).map_err(|e| e.to_string())?;
 
-    let mut books = Vec::new();
-    for book in book_rows {
-        books.push(book.map_err(|e| e.to_string())?);
-    }
-    Ok(books)
+    // Collect results into a Vec, automatically handling potential errors
+    book_rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_book_documents(app_handle: tauri::AppHandle, book_id: String) -> Result<Vec<ManuscriptDoc>, String> {
-    let path = get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+async fn get_book_documents(
+    state: tauri::State<'_, AppState>, 
+    book_id: String
+) -> Result<Vec<ManuscriptDoc>, String> {
+    let conn = state.db.lock().unwrap();
 
     let mut stmt = conn
         .prepare(
@@ -480,22 +523,87 @@ async fn get_book_documents(app_handle: tauri::AppHandle, book_id: String) -> Re
         })
     }).map_err(|e| e.to_string())?;
 
-    let mut docs = Vec::new();
-    for doc in doc_rows {
-        docs.push(doc.map_err(|e| e.to_string())?);
-    }
-    Ok(docs)
+    doc_rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn update_project(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    name: String,
+    series_name: String,
+    volume_number: i32,
+    description: String,
+    genres: Vec<String>,
+    project_type: String,
+    pov: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    
+    // Convert the vector into a JSON string for storage in the 'genres' column
+    let genres_json = serde_json::to_string(&genres).unwrap_or_else(|_| "[]".to_string());
+    
+    let primary_genre = genres.first().cloned().unwrap_or_else(|| "".to_string());
+
+    conn.execute(
+        "UPDATE projects SET 
+         name = ?1, 
+         series_name = ?2, 
+         volume_number = ?3, 
+         description = ?4, 
+         genre = ?5, 
+         genres = ?6, 
+         type = ?7, 
+         pov = ?8, 
+         updated_at = strftime('%s', 'now')
+         WHERE id = ?9",
+        (
+            name, 
+            series_name, 
+            volume_number, 
+            description, 
+            primary_genre, // Legacy column still gets the first genre
+            genres_json,   // The source of truth
+            project_type, 
+            pov, 
+            id
+        ),
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 #[tauri::command]
-async fn delete_project(app_handle: tauri::AppHandle, id: String) -> Result<(), String> {
-    let path = get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+async fn update_book_title(state: tauri::State<'_, AppState>, id: String, title: String) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    conn.execute(
+        "UPDATE books SET title = ?1 WHERE id = ?2",
+        (title, id),
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_secs() as i64;
+#[tauri::command(rename_all = "snake_case")]
+async fn update_document_content(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    content: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    let now = chrono::Utc::now().timestamp();
+
+    conn.execute(
+        "UPDATE documents SET content = ?1, updated_at = ?2 WHERE id = ?3",
+        params![content, now, id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn delete_project(state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    let now = chrono::Utc::now().timestamp();
 
     conn.execute(
         "UPDATE projects SET deleted_at = ?1 WHERE id = ?2",
@@ -510,23 +618,17 @@ async fn delete_book(state: tauri::State<'_, AppState>, id: String, project_id: 
     let conn = state.db.lock().unwrap();
     let now = chrono::Utc::now().timestamp();
 
-    // 1. Delete the book (Cascades to documents)
+    // Delete the book
     conn.execute("DELETE FROM books WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
 
-    // 2. Update the project timestamp
-    conn.execute(
-        "UPDATE projects SET updated_at = ?1 WHERE id = ?2",
-        params![now, project_id],
-    ).map_err(|e| e.to_string())?;
-
-    // 3. Optional: Re-sequence remaining books' order_index
+    // Re-sequence and update Project Metadata
     let mut stmt = conn.prepare(
         "SELECT id FROM books WHERE project_id = ?1 ORDER BY order_index ASC"
     ).map_err(|e| e.to_string())?;
     
     let book_ids: Vec<String> = stmt
-        .query_map([project_id], |row| row.get(0))
+        .query_map([&project_id], |row| row.get(0))
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -535,6 +637,29 @@ async fn delete_book(state: tauri::State<'_, AppState>, id: String, project_id: 
         conn.execute(
             "UPDATE books SET order_index = ?1 WHERE id = ?2",
             params![i as i32, b_id],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    let remaining_count = book_ids.len() as i32;
+
+    // 3. Update the Project (Sync the count and the type)
+    if remaining_count <= 1 {
+        conn.execute(
+            "UPDATE projects SET 
+                type = 'standalone', 
+                series_name = '', 
+                book_count = 1,
+                updated_at = ?1 
+             WHERE id = ?2",
+            params![now, &project_id],
+        ).map_err(|e| e.to_string())?;
+    } else {
+        conn.execute(
+            "UPDATE projects SET 
+                book_count = ?1, 
+                updated_at = ?2 
+             WHERE id = ?3",
+            params![remaining_count, now, &project_id],
         ).map_err(|e| e.to_string())?;
     }
 
@@ -597,87 +722,108 @@ async fn delete_document(
 }
 
 #[tauri::command]
-async fn get_trashed_projects(app_handle: tauri::AppHandle) -> Result<Vec<ProjectRow>, String> {
-    let path = get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+async fn get_trashed_projects(state: tauri::State<'_, AppState>) -> Result<Vec<ProjectRow>, String> {
+    let conn = state.db.lock().unwrap();
 
     let mut stmt = conn.prepare(
         "SELECT 
-            p.id, p.name, p.series_name, p.volume_number, p.type, p.book_count, p.genre, p.description, p.created_at, p.updated_at,
-            COALESCE((SELECT json_group_array(json_object('id', b.id, 'title', b.title, 'orderIndex', b.order_index)) 
-            FROM books b WHERE b.project_id = p.id), '[]') as books_json
+            p.id, 
+            p.name, 
+            p.series_name, 
+            p.volume_number, 
+            p.type, 
+            p.book_count, 
+            p.genres, 
+            p.pov, 
+            p.description, 
+            p.created_at, 
+            p.updated_at, 
+            COALESCE(
+                (SELECT json_group_array(
+                    json_object('id', b.id, 'title', b.title, 'orderIndex', b.order_index)
+                ) FROM books b WHERE b.project_id = p.id),
+                '[]'
+            ) as books_json 
         FROM projects p
         WHERE p.deleted_at IS NOT NULL
         ORDER BY p.deleted_at DESC"
     ).map_err(|e| e.to_string())?;
 
     let rows = stmt.query_map([], |row| {
-        let books_json: String = row.get(10)?; 
-        let books: Vec<BookRow> = serde_json::from_str(&books_json).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-        
+        // Fetch raw JSON strings with defaults
+        let genres_raw: String = row.get::<&str, Option<String>>("genres")?
+            .unwrap_or_else(|| "[]".to_string());
+        let books_raw: String = row.get::<&str, String>("books_json")
+            .unwrap_or_else(|_| "[]".to_string());
+
         Ok(ProjectRow {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            series_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-            volume_number: row.get::<_, Option<i32>>(3)?.unwrap_or(1),
-            project_type: row.get(4)?,
-            book_count: row.get(5)?,
-            genre: row.get(6)?,
-            description: row.get(7)?,
-            created_at: row.get::<_, Option<i64>>(8)?.unwrap_or(0),
-            updated_at: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
-            books,
+            id: row.get("id")?,
+            name: row.get("name")?,
+            series_name: row.get::<&str, Option<String>>("series_name")?.unwrap_or_default(),
+            volume_number: row.get::<&str, Option<i32>>("volume_number")?.unwrap_or(1),
+            project_type: row.get("type")?,
+            book_count: row.get("book_count")?,
+            genres: serde_json::from_str(&genres_raw).unwrap_or_else(|_| vec![]),
+            pov: row.get::<&str, Option<String>>("pov")?.unwrap_or_default(),
+            description: row.get::<&str, Option<String>>("description")?.unwrap_or_default(),
+            created_at: row.get::<&str, Option<i64>>("created_at")?.unwrap_or(0),
+            updated_at: row.get::<&str, Option<i64>>("updated_at")?.unwrap_or(0),
+            books: serde_json::from_str(&books_raw).unwrap_or_else(|_| vec![]),
         })
     }).map_err(|e| e.to_string())?;
 
-    let mut projects = Vec::new();
-    for p in rows { projects.push(p.map_err(|e| e.to_string())?); }
-    Ok(projects)
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn restore_project(app_handle: tauri::AppHandle, id: String) -> Result<(), String> {
-    let path = get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+async fn restore_project(state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
 
-    conn.execute("UPDATE projects SET deleted_at = NULL WHERE id = ?1", [id])
+    conn.execute(
+        "UPDATE projects SET deleted_at = NULL WHERE id = ?1", 
+        [id]
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn purge_project(state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    
+    // Delete the project (Foreign keys will handle books/docs if ON DELETE CASCADE is set)
+    conn.execute("DELETE FROM projects WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
+    
+    // VACUUM cleans up unused space and shrinks the database file
+    conn.execute("VACUUM", [])
+        .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
 #[tauri::command]
-async fn purge_project(app_handle: tauri::AppHandle, id: String) -> Result<(), String> {
-    let path = get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
-    
-    conn.execute("DELETE FROM projects WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
-    
-    // Clean up the file size after deletion
-    conn.execute("VACUUM", []).map_err(|e| e.to_string())?;
-    Ok(())
-}
+async fn empty_trash(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
 
-#[tauri::command]
-async fn empty_trash(app_handle: tauri::AppHandle) -> Result<(), String> {
-    let path = get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
-
-    conn.execute("DELETE FROM projects WHERE deleted_at IS NOT NULL", []).map_err(|e| e.to_string())?;
+    // Wipe all projects marked for deletion
+    conn.execute("DELETE FROM projects WHERE deleted_at IS NOT NULL", [])
+        .map_err(|e| e.to_string())?;
     
-    conn.execute("VACUUM", []).map_err(|e| e.to_string())?;
+    // Reclaim disk space
+    conn.execute("VACUUM", [])
+        .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn set_expanded_chapters(
-    app_handle: tauri::AppHandle, 
+    state: tauri::State<'_, AppState>, 
     project_id: String, 
     ids: Vec<String>
 ) -> Result<(), String> {
-    let path = get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
-    
-    // We store the IDs as a JSON string for simplicity
+    let conn = state.db.lock().unwrap();
     let json_ids = serde_json::to_string(&ids).map_err(|e| e.to_string())?;
 
     conn.execute(
@@ -685,7 +831,6 @@ async fn set_expanded_chapters(
          VALUES (?1, ?2, 'expanded_chapters', ?3)",
         params![format!("{}_exp", project_id), project_id, json_ids],
     ).map_err(|e| e.to_string())?;
-
     Ok(())
 }
 
@@ -841,6 +986,9 @@ pub fn run() {
             get_project_books, 
             get_book_documents,
             get_project_by_id,
+            update_project,
+            update_document_content,
+            update_book_title,
             delete_project, 
             delete_book,
             delete_document,

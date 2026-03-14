@@ -15,7 +15,7 @@ export function mapRawProject(p: any): Project {
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
     lastOpened: p.updatedAt || Math.floor(Date.now() / 1000),
-    genre: p.genre || 'General',
+    genres: Array.isArray(p.genres) ? p.genres : [],
     description: p.description || '',
     books: p.books || [],
   };
