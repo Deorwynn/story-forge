@@ -18,5 +18,6 @@ export function mapRawProject(p: any): Project {
     genres: Array.isArray(p.genres) ? p.genres : [],
     description: p.description || '',
     books: p.books || [],
+    pov: p.pov,
   };
 }

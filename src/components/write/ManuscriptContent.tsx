@@ -16,9 +16,12 @@ export default function ManuscriptContent() {
 
   const projectId = project?.id;
   const bookId =
-    (project as any)?.books?.find(
-      (b: any) => b.orderIndex === (project?.volumeNumber || 1) - 1
-    )?.id || (project as any)?.books?.[0]?.id;
+    project?.type === 'standalone'
+      ? project.books?.[0]?.id // Standalone: Always use the only book available
+      : project?.books?.find(
+          // Series: Find by volume number
+          (b: any) => b.orderIndex === (project?.volumeNumber || 1) - 1
+        )?.id || project?.books?.[0]?.id;
 
   useEffect(() => {
     if (projectId) {
