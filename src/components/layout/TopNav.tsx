@@ -43,6 +43,14 @@ export default function TopNav({
     }
   }, [isOpen, project.id, project.type]);
 
+  const currentBook = project.books?.find(
+    (b) => b.orderIndex === project.volumeNumber - 1
+  );
+  const displayTitle =
+    project.type === 'series' && currentBook ? currentBook.title : project.name;
+
+  const currentBookId = project.books?.[project.volumeNumber - 1]?.id;
+
   const romanize = (num: number) => {
     if (!num || num < 1) return 'I';
     const lookup: { [key: string]: number } = {
@@ -128,7 +136,7 @@ export default function TopNav({
                   ${isOpen ? 'text-[#9333ea]' : 'text-slate-800'}
                 `}
               >
-                {project.name || 'Untitled Story'}
+                {displayTitle || 'Untitled Story'}
               </h2>
             </button>
 
@@ -157,13 +165,13 @@ export default function TopNav({
                           setIsOpen(false);
                         }}
                         className={`w-full text-left px-4 py-3 rounded-xl transition-all flex flex-col cursor-pointer ${
-                          book.title === project.name
+                          book.id === currentBookId
                             ? 'bg-purple-50 text-purple-700'
                             : 'hover:bg-slate-50 text-slate-600'
                         }`}
                       >
                         <span className="text-[9px] font-bold uppercase opacity-60">
-                          Volume{' '}
+                          Volume
                           {(book.order_index ?? book.orderIndex ?? 0) + 1}
                         </span>
                         <span className="text-sm font-semibold">

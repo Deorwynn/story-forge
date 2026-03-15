@@ -69,6 +69,7 @@ export default function EditProjectForm({
   );
 
   const [modalError, setModalError] = useState<string | null>(null);
+  const [currentBooks, setCurrentBooks] = useState(project.books || []);
 
   // Modal State
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -97,7 +98,6 @@ export default function EditProjectForm({
 
       await invoke('update_project', updatedPayload);
 
-      // If it's a series, handle the book titles
       const updatedBooksForState: any[] = [];
 
       if (type === 'series') {
@@ -106,11 +106,9 @@ export default function EditProjectForm({
           const title = bookTitles[i];
 
           if (existingBook) {
-            // Update existing book title if it changed
             await invoke('update_book_title', { id: existingBook.id, title });
             updatedBooksForState.push({ ...existingBook, title });
           } else {
-            // Create new book if it's a new volume added in the manager
             const newBookId = crypto.randomUUID();
             await invoke('create_book', {
               id: newBookId,
@@ -125,16 +123,20 @@ export default function EditProjectForm({
 
       onConfirm({
         ...project,
-        name: updatedPayload.name,
         seriesName: updatedPayload.series_name,
-        volumeNumber: updatedPayload.volume_number,
+        volumeNumber: project.volumeNumber,
         description: updatedPayload.description,
         genres: updatedPayload.genres,
         type: type,
         pov: updatedPayload.pov,
         bookCount: bookTitles.length,
         books: type === 'series' ? updatedBooksForState : project.books,
+        name:
+          type === 'series'
+            ? updatedBooksForState[project.volumeNumber - 1]?.title || name
+            : name,
       } as Project);
+
       onCancel();
     } catch (err) {
       console.error('Failed to save project:', err);
@@ -150,7 +152,6 @@ export default function EditProjectForm({
 
     try {
       if (deleteConfirm.target === 'book') {
-        // Soft delete the book
         await invoke('delete_book', {
           id: deleteConfirm.id,
           project_id: project.id,
@@ -160,39 +161,50 @@ export default function EditProjectForm({
           project.books?.filter((b) => b.id !== deleteConfirm.id) || [];
         const newCount = updatedBooks.length;
 
+        // Update local state immediately so the UI lists change
+        setCurrentBooks(updatedBooks);
+        setBookTitles(updatedBooks.map((b) => b.title));
+
         if (deleteConfirm.isLastTwo) {
           // Handle Standalone conversion logic
           const remainingBook = updatedBooks[0];
           const newName = remainingBook?.title || name;
+          const projectNewName = name;
 
           const updatePayload = {
             id: project.id,
-            name: newName,
+            name: projectNewName, // Keep the "Series Title"
             project_type: 'standalone',
             series_name: '',
             genres: selectedGenres,
             pov,
             description,
             book_count: 1,
+            volume_number: 1,
           };
 
           await invoke('update_project', updatePayload);
 
-          onConfirm({
+          setType('standalone');
+          setName(projectNewName);
+          setBookTitles([projectNewName]);
+
+          (onConfirm({
             ...project,
             ...updatePayload,
             seriesName: '',
             type: 'standalone',
+            name: projectNewName,
             books: updatedBooks,
-            name: newName,
             bookCount: 1,
-          } as Project);
+          } as Project),
+            console.log('newName: ', newName));
         } else {
           onConfirm({
             ...project,
+            type: updatedBooks.length <= 1 ? 'standalone' : project.type,
             books: updatedBooks,
             bookCount: newCount,
-            type: updatedBooks.length <= 1 ? 'standalone' : project.type,
           } as Project);
         }
       } else {
@@ -403,7 +415,17 @@ export default function EditProjectForm({
                       Convert this standalone project into a series to manage
                       multiple volumes and shared world-building.
                     </p>
-                    <Button onClick={() => setType('series')} variant="primary">
+                    <Button
+                      onClick={() => {
+                        setType('series');
+                        // If it was a standalone, it had 1 book (the project name).
+                        // We now force it to have 2 books to qualify as a series.
+                        if (bookTitles.length <= 1) {
+                          setBookTitles([name, 'Volume 2']);
+                        }
+                      }}
+                      variant="primary"
+                    >
                       Convert to Series
                     </Button>
                   </div>
@@ -432,7 +454,7 @@ export default function EditProjectForm({
               <div className="space-y-6">
                 {/* Book Deletion List */}
                 {type === 'series' &&
-                  project.books?.map((book) => (
+                  currentBooks.map((book) => (
                     <div
                       key={book.id}
                       className="flex justify-between items-center p-4 bg-white border rounded-2xl"
@@ -445,7 +467,7 @@ export default function EditProjectForm({
                             id: book.id,
                             title: book.title,
                             target: 'book',
-                            isLastTwo: (project.books?.length || 0) <= 2,
+                            isLastTwo: currentBooks.length <= 2,
                           })
                         }
                         className="text-red-400 hover:text-red-600 p-2 cursor-pointer"

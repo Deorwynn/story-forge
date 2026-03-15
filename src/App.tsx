@@ -38,96 +38,107 @@ function App() {
       activeProject?.books?.[activeProject.volumeNumber - 1]?.id;
 
     // The Guard: Only save if we are NOT loading AND we have a real tab selection
-    if (!isInitialLoad && activeProject?.id && currentBookId && activeTab) {
+    if (
+      !isInitialLoad &&
+      activeProject?.id &&
+      currentBookId &&
+      activeTab !== null
+    ) {
       invoke('set_user_preference', {
         project_id: activeProject.id,
         key: `active_tab_book_${currentBookId}`,
         value: activeTab,
       }).catch((err) => console.error('Failed to save tab pref:', err));
     }
-  }, [activeTab, isInitialLoad]);
+  }, [activeTab, isInitialLoad, activeProject?.id]);
 
   // Persist Project selection to LocalStorage
   useEffect(() => {
-    if (activeProject) {
+    // Only save if we are NOT in the middle of a sync/initial load
+    if (activeProject && !isInitialLoad) {
+      const currentBook = activeProject.books?.[activeProject.volumeNumber - 1];
+
+      const persistentData = {
+        ...activeProject,
+        volumeNumber: activeProject.volumeNumber,
+        name: currentBook ? currentBook.title : activeProject.name,
+      };
+
       localStorage.setItem(
         'last_active_project',
-        JSON.stringify(activeProject)
+        JSON.stringify(persistentData)
       );
-    } else {
-      localStorage.removeItem('last_active_project');
     }
-  }, [activeProject]);
+  }, [activeProject, isInitialLoad]);
 
   useEffect(() => {
     const syncProjectWithDb = async () => {
       if (!activeProject?.id) return;
-
-      setIsInitialLoad(true);
+      if (!isInitialLoad) return;
 
       try {
-        // Fetch Project Data
         const rawData = await invoke<any>('get_project_by_id', {
           id: activeProject.id,
         });
-
         const savedBookId = await invoke<string>('get_last_active_book', {
           project_id: activeProject.id,
-        }).catch(() => null);
+        });
 
-        const rawBooks = rawData.books || [];
-        const bookIdForTabLookup = savedBookId || rawBooks[0]?.id;
-
-        // Fetch Tab Truth
-        let initialTab: ForgeView = 'Write';
-        if (bookIdForTabLookup) {
-          const savedTab = await invoke<string>('get_user_preference', {
-            project_id: activeProject.id,
-            key: `active_tab_book_${bookIdForTabLookup}`,
-          }).catch(() => null);
-          if (savedTab) initialTab = savedTab as ForgeView;
-        }
-
-        // Process Project Object
-        const sanitizedBooks = rawBooks.map((b: any) => ({
+        const sanitizedBooks = (rawData.books || []).map((b: any) => ({
           ...b,
-          orderIndex:
-            b.orderIndex !== undefined ? b.orderIndex : (b.order_index ?? 0),
+          orderIndex: b.orderIndex ?? b.order_index ?? 0,
         }));
 
-        let targetVolume = 1;
-        let currentBookTitle = rawData.name;
-
-        if (savedBookId && sanitizedBooks.length > 0) {
-          const bookIndex = sanitizedBooks.findIndex(
+        // Find what the DB thinks is the last book
+        let dbTargetVolume = 1;
+        if (savedBookId) {
+          const idx = sanitizedBooks.findIndex(
             (b: any) => b.id === savedBookId
           );
-          if (bookIndex !== -1) {
-            targetVolume = bookIndex + 1;
-            currentBookTitle = sanitizedBooks[bookIndex].title;
+          if (idx !== -1) dbTargetVolume = idx + 1;
+        }
+
+        const savedData = localStorage.getItem('last_active_project');
+        const parsedSaved = savedData ? JSON.parse(savedData) : null;
+        const isSameProject = parsedSaved?.id === activeProject.id;
+        const volumeFromStorage = isSameProject ? parsedSaved.volumeNumber : 0;
+
+        let finalVolume = 1;
+        if (volumeFromStorage > 0) {
+          finalVolume = volumeFromStorage;
+        } else if (dbTargetVolume > 0) {
+          finalVolume = dbTargetVolume;
+        }
+
+        // Resolve the specific Book ID to fetch the tab
+        const activeBookId = sanitizedBooks[finalVolume - 1]?.id;
+
+        if (activeBookId) {
+          const savedTab = await invoke<string>('get_user_preference', {
+            project_id: activeProject.id,
+            key: `active_tab_book_${activeBookId}`,
+          }).catch(() => null);
+
+          if (savedTab) {
+            setActiveTab(savedTab as ForgeView);
           }
         }
 
-        // ATOMIC UPDATE: Set everything, then unlock
-        setActiveTab(initialTab);
         setActiveProject({
           ...rawData,
-          id: rawData.id,
-          name: currentBookTitle,
           books: sanitizedBooks,
-          volumeNumber: targetVolume,
-          genres: Array.isArray(rawData.genres) ? rawData.genres : [],
-          pov: rawData.pov || 'First Person',
+          volumeNumber: finalVolume,
+          name: sanitizedBooks[finalVolume - 1]?.title || rawData.name,
         });
       } catch (err) {
         console.error('Sync failed:', err);
       } finally {
-        setTimeout(() => setIsInitialLoad(false), 300);
+        setIsInitialLoad(false);
       }
     };
 
     syncProjectWithDb();
-  }, [activeProject?.id]);
+  }, [activeProject?.id]); // Only runs when entering a project
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
@@ -173,6 +184,43 @@ function App() {
     }
   };
 
+  const handleEnterProject = async (baseProject: Project) => {
+    setIsInitialLoad(true); // Show the curtain immediately
+
+    try {
+      // Ask the DB: "Where did we leave off?"
+      const savedBookId = await invoke<string>('get_last_active_book', {
+        project_id: baseProject.id,
+      }).catch(() => null);
+
+      // Map the books
+      const sanitizedBooks = (baseProject.books || []).map((b: any) => ({
+        ...b,
+        orderIndex: b.orderIndex ?? b.order_index ?? 0,
+      }));
+
+      // Calculate the target volume
+      let targetVolume = 1;
+      if (savedBookId) {
+        const idx = sanitizedBooks.findIndex((b: any) => b.id === savedBookId);
+        if (idx !== -1) targetVolume = idx + 1;
+      }
+
+      // 4. SET STATE ONCE. No updates, no flicker.
+      setActiveProject({
+        ...baseProject,
+        books: sanitizedBooks,
+        volumeNumber: targetVolume,
+        name: sanitizedBooks[targetVolume - 1]?.title || baseProject.name,
+      });
+    } catch (err) {
+      console.error('Entry failed', err);
+      setActiveProject(baseProject); // Fallback
+    } finally {
+      setIsInitialLoad(false);
+    }
+  };
+
   useEffect(() => {
     setDocuments([]);
     if (activeProject?.id) fetchDocs();
@@ -183,7 +231,7 @@ function App() {
       <div className="app-container">
         {view === 'library' ? (
           <ProjectLibrary
-            onCreateProject={(p) => setActiveProject(p)}
+            onCreateProject={handleEnterProject}
             onViewTrash={() => setView('trash')}
           />
         ) : (
@@ -199,11 +247,13 @@ function App() {
     // Block the Save effect from firing during the switch
     setIsInitialLoad(true);
 
+    const newVol = (book.orderIndex ?? book.order_index ?? 0) + 1;
+
     // Update Local UI State
     setActiveProject({
       ...activeProject,
       name: book.title,
-      volumeNumber: (book.orderIndex ?? book.order_index ?? 0) + 1,
+      volumeNumber: newVol,
     });
 
     try {
@@ -240,6 +290,7 @@ function App() {
       <TopNav
         onExit={() => {
           setActiveProject(null);
+          setActiveTab(null);
           setView('library');
         }}
         project={activeProject}
