@@ -21,8 +21,6 @@ export default function NewProjectForm({
   const [description, setDescription] = useState('');
 
   // SERIES SPECIFIC
-  const [seriesTitle, setSeriesTitle] = useState('');
-  const [bookCount, setBookCount] = useState(3);
   const [bookTitles, setBookTitles] = useState<string[]>([]);
   const [pov, setPov] = useState('');
 
@@ -34,12 +32,12 @@ export default function NewProjectForm({
   const handleNextStep = () => {
     if (!isFormValid) return;
     if (!inputValue.trim()) return; // Don't allow empty titles
-    setSeriesTitle(inputValue);
 
-    // Pre-fill the first book with the same name as a starting point
-    const initialTitles = Array.from({ length: bookCount }, (_, i) =>
+    const defaultInitialCount = 2;
+    const initialTitles = Array.from({ length: defaultInitialCount }, (_, i) =>
       i === 0 ? inputValue : `Volume ${i + 1}`
     );
+
     setBookTitles(initialTitles);
     setStep(2);
   };
@@ -55,9 +53,9 @@ export default function NewProjectForm({
     const projectId = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);
 
+    const finalSeriesName = type === 'series' ? inputValue : '';
     const finalBookName =
-      type === 'series' ? bookTitles[0] || 'Untitled Volume' : inputValue;
-    const finalSeriesName = type === 'series' ? seriesTitle : '';
+      type === 'series' ? bookTitles[0] || inputValue : inputValue;
 
     try {
       // Create the Project
@@ -67,7 +65,7 @@ export default function NewProjectForm({
         seriesName: finalSeriesName,
         volumeNumber: 1,
         projectType: type,
-        bookCount: type === 'series' ? bookCount : 1,
+        bookCount: type === 'series' ? bookTitles.length : 1,
         genres: selectedGenres,
         pov: pov,
         description,
@@ -105,7 +103,7 @@ export default function NewProjectForm({
         seriesName: finalSeriesName,
         volumeNumber: 1,
         type: type,
-        bookCount: type === 'series' ? bookCount : 1,
+        bookCount: type === 'series' ? bookTitles.length : 1,
         createdAt: now,
         updatedAt: now,
         genres: selectedGenres,
