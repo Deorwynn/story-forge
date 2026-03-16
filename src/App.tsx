@@ -199,14 +199,31 @@ function App() {
         orderIndex: b.orderIndex ?? b.order_index ?? 0,
       }));
 
-      // Calculate the target volume
       let targetVolume = 1;
+      let targetBookId = sanitizedBooks[0]?.id; // Default to first book
+
       if (savedBookId) {
         const idx = sanitizedBooks.findIndex((b: any) => b.id === savedBookId);
-        if (idx !== -1) targetVolume = idx + 1;
+        if (idx !== -1) {
+          targetVolume = idx + 1;
+          targetBookId = savedBookId;
+        }
       }
 
-      // 4. SET STATE ONCE. No updates, no flicker.
+      // Fetch the tab preference for the specific book we are entering
+      if (targetBookId) {
+        const savedTab = await invoke<string>('get_user_preference', {
+          project_id: baseProject.id,
+          key: `active_tab_book_${targetBookId}`,
+        }).catch(() => null);
+
+        if (savedTab) {
+          setActiveTab(savedTab as ForgeView);
+        } else {
+          setActiveTab('Write'); // Default if none found
+        }
+      }
+
       setActiveProject({
         ...baseProject,
         books: sanitizedBooks,
