@@ -58,10 +58,19 @@ function App() {
     if (activeProject && !isInitialLoad) {
       const currentBook = activeProject.books?.[activeProject.volumeNumber - 1];
 
+      // Determine the display name:
+      // If standalone, ALWAYS use the project name.
+      // If series, use the book title.
+      const displayName =
+        activeProject.type === 'standalone'
+          ? activeProject.name
+          : currentBook
+            ? currentBook.title
+            : activeProject.name;
+
       const persistentData = {
         ...activeProject,
-        volumeNumber: activeProject.volumeNumber,
-        name: currentBook ? currentBook.title : activeProject.name,
+        name: displayName,
       };
 
       localStorage.setItem(
@@ -128,7 +137,10 @@ function App() {
           ...rawData,
           books: sanitizedBooks,
           volumeNumber: finalVolume,
-          name: sanitizedBooks[finalVolume - 1]?.title || rawData.name,
+          name:
+            rawData.project_type === 'standalone'
+              ? rawData.name
+              : sanitizedBooks[finalVolume - 1]?.title || rawData.name,
         });
       } catch (err) {
         console.error('Sync failed:', err);
@@ -243,12 +255,24 @@ function App() {
     if (activeProject?.id) fetchDocs();
   }, [activeProject?.id, activeProject?.volumeNumber]);
 
+  const handleUpdateProject = (updated: Project) => {
+    if (activeProject?.id === updated.id) {
+      setActiveProject({
+        ...updated,
+        // Keep the volume number we were already on,
+        // otherwise it might reset to 1 or become undefined!
+        volumeNumber: activeProject.volumeNumber,
+      });
+    }
+  };
+
   if (!activeProject) {
     return (
       <div className="app-container">
         {view === 'library' ? (
           <ProjectLibrary
             onCreateProject={handleEnterProject}
+            onUpdateProject={handleUpdateProject}
             onViewTrash={() => setView('trash')}
           />
         ) : (
