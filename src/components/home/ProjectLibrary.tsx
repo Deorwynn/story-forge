@@ -12,9 +12,11 @@ import { TrashIcon } from '../shared/Icons';
 
 export default function ProjectLibrary({
   onCreateProject,
+  onUpdateProject,
   onViewTrash,
 }: {
   onCreateProject: (p: Project) => void;
+  onUpdateProject: (p: Project) => void;
   onViewTrash: () => void;
 }) {
   const [isCreating, setIsCreating] = useState(false);
@@ -152,6 +154,7 @@ export default function ProjectLibrary({
               setExistingProjects((prev) =>
                 prev.map((p) => (p.id === updated.id ? updated : p))
               );
+              onUpdateProject(updated);
             }
           }}
         />

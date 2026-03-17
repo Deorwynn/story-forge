@@ -5,7 +5,6 @@ import { Project } from '../types/project';
  * Handles fallback values for dates and naming conventions.
  */
 export function mapRawProject(p: any): Project {
-  console.log('RAW FROM DB:', p);
   return {
     id: p.id,
     name: p.name || 'Untitled Story',
