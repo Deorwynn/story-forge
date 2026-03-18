@@ -54,23 +54,34 @@ function App() {
 
   // Persist Project selection to LocalStorage
   useEffect(() => {
-    // Only save if we are NOT in the middle of a sync/initial load
     if (activeProject && !isInitialLoad) {
-      const currentBook = activeProject.books?.[activeProject.volumeNumber - 1];
-
-      // Determine the display name:
-      // If standalone, ALWAYS use the project name.
-      // If series, use the book title.
-      const displayName =
+      // Calculate the current book safely
+      // If we just converted to standalone, volumeNumber should always effectively be 1
+      const safeIndex =
         activeProject.type === 'standalone'
-          ? activeProject.name
-          : currentBook
-            ? currentBook.title
-            : activeProject.name;
+          ? 0
+          : activeProject.volumeNumber - 1;
+      const currentBook = activeProject.books?.[safeIndex];
+
+      let displayName = activeProject.name;
+
+      if (activeProject.type === 'standalone') {
+        // STANDALONE RULE:
+        // If the project name is "Volume X" but it's now a standalone,
+        // we should check if we have a seriesName to revert to,
+        // OR just ensure we aren't using the book title.
+        displayName = activeProject.name;
+      } else {
+        // SERIES RULE: Book title takes precedence for the TopNav
+        displayName = currentBook?.title || activeProject.name;
+      }
 
       const persistentData = {
         ...activeProject,
         name: displayName,
+        // Ensure volumeNumber is 1 if it's a standalone to prevent index errors
+        volumeNumber:
+          activeProject.type === 'standalone' ? 1 : activeProject.volumeNumber,
       };
 
       localStorage.setItem(
@@ -187,6 +198,7 @@ function App() {
         const result = await invoke<ManuscriptDoc[]>('get_book_documents', {
           bookId: currentBookId,
         });
+        console.log(result);
         setDocuments(result);
       } catch (err) {
         console.error('Failed to fetch documents:', err);
@@ -211,36 +223,34 @@ function App() {
         orderIndex: b.orderIndex ?? b.order_index ?? 0,
       }));
 
-      let targetVolume = 1;
-      let targetBookId = sanitizedBooks[0]?.id; // Default to first book
+      // If standalone, we don't care what the DB says.
+      // The only book is the first book.
+      const isStandalone =
+        baseProject.type === 'standalone' ||
+        (baseProject as any).project_type === 'standalone';
 
-      if (savedBookId) {
+      const bookExists = sanitizedBooks.some((b) => b.id === savedBookId);
+
+      let targetVolume = 1;
+
+      // Only respect savedBookId if it's a series and the book still exists
+      if (!isStandalone && savedBookId && bookExists) {
         const idx = sanitizedBooks.findIndex((b: any) => b.id === savedBookId);
         if (idx !== -1) {
           targetVolume = idx + 1;
-          targetBookId = savedBookId;
         }
       }
 
-      // Fetch the tab preference for the specific book we are entering
-      if (targetBookId) {
-        const savedTab = await invoke<string>('get_user_preference', {
-          project_id: baseProject.id,
-          key: `active_tab_book_${targetBookId}`,
-        }).catch(() => null);
-
-        if (savedTab) {
-          setActiveTab(savedTab as ForgeView);
-        } else {
-          setActiveTab('Write'); // Default if none found
-        }
-      }
+      // Determine the FINAL name immediately to prevent the "Volume 2" flash
+      const finalName = isStandalone
+        ? baseProject.name || sanitizedBooks[0]?.title
+        : sanitizedBooks[targetVolume - 1]?.title || baseProject.name;
 
       setActiveProject({
         ...baseProject,
         books: sanitizedBooks,
         volumeNumber: targetVolume,
-        name: sanitizedBooks[targetVolume - 1]?.title || baseProject.name,
+        name: finalName,
       });
     } catch (err) {
       console.error('Entry failed', err);
@@ -252,16 +262,17 @@ function App() {
 
   useEffect(() => {
     setDocuments([]);
+    console.log('activeProject: ', activeProject);
     if (activeProject?.id) fetchDocs();
   }, [activeProject?.id, activeProject?.volumeNumber]);
 
   const handleUpdateProject = (updated: Project) => {
     if (activeProject?.id === updated.id) {
+      // If the type changed to standalone, force the volume to 1
+      const forceVolume1 = updated.type === 'standalone';
       setActiveProject({
         ...updated,
-        // Keep the volume number we were already on,
-        // otherwise it might reset to 1 or become undefined!
-        volumeNumber: activeProject.volumeNumber,
+        volumeNumber: forceVolume1 ? 1 : activeProject.volumeNumber,
       });
     }
   };
