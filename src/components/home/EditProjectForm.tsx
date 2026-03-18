@@ -85,38 +85,38 @@ export default function EditProjectForm({
     try {
       const isStandalone = type === 'standalone';
 
+      // Get the correct Book ID
+      const survivingBook = currentBooks[0] || project.books[0];
+
       const updatedPayload = {
-        id: project.id,
-        // If standalone, 'name' is the Book/Project name.
-        // If series, 'project.name' is the persistent Project Name, and 'name' is the Series Title.
+        ...project, // Keep existing fields
         name: isStandalone ? name : project.name,
-        series_name: type === 'series' ? name : '',
-        volume_number: isStandalone ? 1 : project.volumeNumber,
-        description,
-        genres: selectedGenres,
+        series_name: isStandalone ? '' : name,
         project_type: type,
-        pov,
+        volume_number: 1, // Reset to 1 for standalone
         book_count: isStandalone ? 1 : bookTitles.length,
       };
 
-      // 2. Update the main Project record
+      // Update the main Project record
       await invoke('update_project', updatedPayload);
 
       const updatedBooksForState: any[] = [];
 
       if (isStandalone) {
-        // Handle Standalone Sync: Ensure the one remaining book matches the title
-        const remainingBook = currentBooks[0] || project.books?.[0];
-        const bookId = remainingBook?.id || crypto.randomUUID();
-
-        await invoke('update_book_title', { id: bookId, title: name });
-
-        updatedBooksForState.push({
-          ...remainingBook,
-          id: bookId,
+        // Sync the one book's title to match the project name
+        await invoke('update_book_title', {
+          id: survivingBook.id,
           title: name,
-          orderIndex: 0,
         });
+
+        // Update the state we send back to App.tsx
+        onConfirm({
+          ...updatedPayload,
+          type: 'standalone',
+          books: [{ ...survivingBook, title: name, orderIndex: 0 }],
+          volumeNumber: 1,
+          bookCount: 1,
+        } as Project);
       } else {
         // Handle Series Sync: Update or Create all volumes in the list
         for (let i = 0; i < bookTitles.length; i++) {
@@ -140,9 +140,9 @@ export default function EditProjectForm({
       }
 
       // Send the perfectly aligned state back to App.tsx
-      onConfirm({
+      const finalProjectState = {
         ...project,
-        ...updatedPayload, // Spread database fields (description, pov, etc)
+        ...updatedPayload,
         seriesName: updatedPayload.series_name,
         type: type,
         books: updatedBooksForState,
@@ -152,8 +152,9 @@ export default function EditProjectForm({
         name: isStandalone
           ? name
           : updatedBooksForState[project.volumeNumber - 1]?.title || name,
-      } as Project);
+      };
 
+      onConfirm(finalProjectState as Project);
       onCancel();
     } catch (err) {
       console.error('Failed to save project:', err);
@@ -206,6 +207,11 @@ export default function EditProjectForm({
             await invoke('update_book_title', {
               id: remainingBook.id,
               title: masterTitle,
+            });
+
+            await invoke('set_last_active_book', {
+              project_id: project.id,
+              book_id: remainingBook.id,
             });
           }
 
