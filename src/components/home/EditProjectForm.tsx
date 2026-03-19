@@ -95,6 +95,9 @@ export default function EditProjectForm({
         project_type: type,
         volume_number: 1, // Reset to 1 for standalone
         book_count: isStandalone ? 1 : bookTitles.length,
+        genres: selectedGenres,
+        pov: pov,
+        description: description,
       };
 
       // Update the main Project record
@@ -110,13 +113,11 @@ export default function EditProjectForm({
         });
 
         // Update the state we send back to App.tsx
-        onConfirm({
-          ...updatedPayload,
-          type: 'standalone',
-          books: [{ ...survivingBook, title: name, orderIndex: 0 }],
-          volumeNumber: 1,
-          bookCount: 1,
-        } as Project);
+        updatedBooksForState.push({
+          ...survivingBook,
+          title: name,
+          orderIndex: 0,
+        });
       } else {
         // Handle Series Sync: Update or Create all volumes in the list
         for (let i = 0; i < bookTitles.length; i++) {
@@ -125,7 +126,11 @@ export default function EditProjectForm({
 
           if (existingBook) {
             await invoke('update_book_title', { id: existingBook.id, title });
-            updatedBooksForState.push({ ...existingBook, title });
+            updatedBooksForState.push({
+              ...existingBook,
+              title,
+              orderIndex: i,
+            });
           } else {
             const newBookId = crypto.randomUUID();
             await invoke('create_book', {
@@ -148,6 +153,9 @@ export default function EditProjectForm({
         books: updatedBooksForState,
         bookCount: updatedBooksForState.length,
         volumeNumber: isStandalone ? 1 : project.volumeNumber,
+        genres: selectedGenres,
+        pov: pov,
+        description: description,
         // If standalone, name is the input. If series, name is the specific volume's title.
         name: isStandalone
           ? name
@@ -176,15 +184,19 @@ export default function EditProjectForm({
           project_id: project.id,
         });
 
-        const updatedBooks =
-          project.books?.filter((b) => b.id !== deleteConfirm.id) || [];
+        const sourceList =
+          currentBooks.length > 0 ? currentBooks : project.books || [];
+
+        const updatedBooks = sourceList.filter(
+          (b) => b.id !== deleteConfirm.id
+        );
         const newCount = updatedBooks.length;
 
         // Update local state immediately so the UI lists change
         setCurrentBooks(updatedBooks);
         setBookTitles(updatedBooks.map((b) => b.title));
 
-        if (deleteConfirm.isLastTwo) {
+        if (newCount === 1) {
           const remainingBook = updatedBooks[0];
           // Use the name from the input field as the master title
           const masterTitle = name;
@@ -208,17 +220,12 @@ export default function EditProjectForm({
               id: remainingBook.id,
               title: masterTitle,
             });
-
-            await invoke('set_last_active_book', {
-              project_id: project.id,
-              book_id: remainingBook.id,
-            });
           }
 
           // Update local state
-          const finalizedBooks = remainingBook
-            ? [{ ...remainingBook, title: masterTitle }]
-            : [];
+          const finalizedBooks = [
+            { ...remainingBook, title: masterTitle, orderIndex: 0 },
+          ];
 
           setType('standalone');
           setName(masterTitle);
@@ -236,7 +243,6 @@ export default function EditProjectForm({
         } else {
           onConfirm({
             ...project,
-            type: updatedBooks.length <= 1 ? 'standalone' : project.type,
             books: updatedBooks,
             bookCount: newCount,
           } as Project);
