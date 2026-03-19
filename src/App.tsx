@@ -149,7 +149,7 @@ function App() {
           books: sanitizedBooks,
           volumeNumber: finalVolume,
           name:
-            rawData.project_type === 'standalone'
+            rawData.type === 'standalone'
               ? rawData.name
               : sanitizedBooks[finalVolume - 1]?.title || rawData.name,
         });
@@ -198,7 +198,6 @@ function App() {
         const result = await invoke<ManuscriptDoc[]>('get_book_documents', {
           bookId: currentBookId,
         });
-        console.log(result);
         setDocuments(result);
       } catch (err) {
         console.error('Failed to fetch documents:', err);
@@ -262,7 +261,6 @@ function App() {
 
   useEffect(() => {
     setDocuments([]);
-    console.log('activeProject: ', activeProject);
     if (activeProject?.id) fetchDocs();
   }, [activeProject?.id, activeProject?.volumeNumber]);
 
