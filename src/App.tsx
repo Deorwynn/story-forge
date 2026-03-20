@@ -55,7 +55,6 @@ function App() {
   // Persist Project selection to LocalStorage
   useEffect(() => {
     if (activeProject && !isInitialLoad) {
-      console.log('activeProject: ', activeProject);
       // Calculate the current book safely
       // If we just converted to standalone, volumeNumber should always effectively be 1
       const safeIndex =
@@ -113,7 +112,6 @@ function App() {
         // Find what the DB thinks is the last book
         let dbTargetVolume = 1;
         if (savedBookId) {
-          console.log('rawData: ', rawData);
           const idx = sanitizedBooks.findIndex(
             (b: any) => b.id === savedBookId
           );
@@ -127,7 +125,6 @@ function App() {
 
         let finalVolume = 1;
         if (volumeFromStorage > 0) {
-          console.log('rawData: ', rawData);
           finalVolume = volumeFromStorage;
         } else if (dbTargetVolume > 0) {
           finalVolume = dbTargetVolume;
@@ -137,7 +134,6 @@ function App() {
         const activeBookId = sanitizedBooks[finalVolume - 1]?.id;
 
         if (activeBookId) {
-          console.log('rawData: ', rawData);
           const savedTab = await invoke<string | null>('get_user_preference', {
             project_id: activeProject.id,
             key: `active_tab_book_${activeBookId}`,

@@ -5,6 +5,7 @@ interface ConfirmModalProps {
   title: string;
   message: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   variant?: 'danger' | 'primary';
   onConfirm: () => void;
   onCancel?: () => void;
@@ -15,6 +16,7 @@ export default function ConfirmModal({
   title,
   message,
   confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
   variant = 'primary',
   onConfirm,
   onCancel,
@@ -48,7 +50,7 @@ export default function ConfirmModal({
                 onCancel();
               }}
             >
-              Cancel
+              {cancelLabel}
             </Button>
           )}
           <Button

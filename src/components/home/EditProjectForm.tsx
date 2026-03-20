@@ -78,6 +78,8 @@ export default function EditProjectForm({
     isLastTwo?: boolean;
   } | null>(null);
 
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
   const isFormValid = name.trim() !== '' && selectedGenres.length > 0;
 
   const handleSave = async () => {
@@ -266,11 +268,31 @@ export default function EditProjectForm({
     }
   };
 
+  // Logic to determine if any field has changed
+  const isDirty =
+    type !== project.type ||
+    name !==
+      (project.type === 'series' ? project.seriesName || '' : project.name) ||
+    description !== (project.description || '') ||
+    pov !== (project.pov || 'First Person') ||
+    JSON.stringify(selectedGenres) !== JSON.stringify(project.genres || []) ||
+    JSON.stringify(bookTitles) !==
+      JSON.stringify(project.books?.map((b) => b.title) || []);
+
+  // Intercept the close request
+  const handleCloseAttempt = () => {
+    if (isDirty) {
+      setShowDiscardConfirm(true);
+    } else {
+      onCancel();
+    }
+  };
+
   return (
     <>
       <ModalShell
         title="Project Settings"
-        onClose={onCancel}
+        onClose={handleCloseAttempt}
         maxWidth="max-w-3xl"
       >
         <div className="flex gap-8 min-h-[450px]">
@@ -549,7 +571,11 @@ export default function EditProjectForm({
         </div>
 
         <div className="flex gap-4 mt-10 pt-6 border-t border-slate-50">
-          <Button variant="ghost" className="flex-1" onClick={onCancel}>
+          <Button
+            variant="ghost"
+            className="flex-1"
+            onClick={handleCloseAttempt}
+          >
             Cancel
           </Button>
           <Button
@@ -605,6 +631,20 @@ export default function EditProjectForm({
                   setModalError(null);
                 }
           }
+        />
+      )}
+
+      {/* DISCARD CHANGES GUARD MODAL */}
+      {showDiscardConfirm && (
+        <ConfirmModal
+          isOpen={showDiscardConfirm}
+          title="Unsaved Changes"
+          message="You have modified settings for this project. If you leave now, these changes will be discarded."
+          confirmLabel="Discard Changes"
+          cancelLabel="Stay"
+          variant="danger"
+          onConfirm={onCancel}
+          onCancel={() => setShowDiscardConfirm(false)}
         />
       )}
     </>
