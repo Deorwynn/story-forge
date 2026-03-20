@@ -135,9 +135,9 @@ export default function EditProjectForm({
             const newBookId = crypto.randomUUID();
             await invoke('create_book', {
               id: newBookId,
-              projectId: project.id,
+              project_id: project.id,
               title: title || `Volume ${i + 1}`,
-              orderIndex: i,
+              order_index: i,
             });
             updatedBooksForState.push({ id: newBookId, title, orderIndex: i });
           }
@@ -149,6 +149,7 @@ export default function EditProjectForm({
         ...project,
         ...updatedPayload,
         seriesName: updatedPayload.series_name,
+        id: project.id,
         type: type,
         books: updatedBooksForState,
         bookCount: updatedBooksForState.length,
@@ -160,6 +161,8 @@ export default function EditProjectForm({
         name: isStandalone
           ? name
           : updatedBooksForState[project.volumeNumber - 1]?.title || name,
+        createdAt: project.createdAt,
+        updatedAt: Math.floor(Date.now() / 1000),
       };
 
       onConfirm(finalProjectState as Project);

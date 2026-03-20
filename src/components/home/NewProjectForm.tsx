@@ -44,6 +44,8 @@ export default function NewProjectForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Handle the multi-step form transition for series
     if (step === 1 && type === 'series') {
       handleNextStep();
       return;
@@ -53,63 +55,54 @@ export default function NewProjectForm({
     const projectId = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);
 
+    // Determine the list of titles based on the project type
+    const titles = type === 'standalone' ? [inputValue] : bookTitles;
+
+    // 1. GENERATE THE IDS HERE
+    // Create the IDs now so we can pass them to Rust
+    // AND use them in the onConfirm payload immediately.
+    const booksToCreate = titles.map((title, i) => ({
+      id: crypto.randomUUID(),
+      title: title || `Volume ${i + 1}`,
+      orderIndex: i,
+    }));
+
     const finalSeriesName = type === 'series' ? inputValue : '';
-    const finalBookName =
-      type === 'series' ? bookTitles[0] || inputValue : inputValue;
+    const finalBookName = booksToCreate[0].title;
 
     try {
-      // Create the Project
+      // 2. ATOMIC INVOKE
+      // Send the project data AND the array of [ID, Title] pairs to Rust.
       await invoke('create_project', {
         id: projectId,
         name: finalBookName,
-        seriesName: finalSeriesName,
-        volumeNumber: 1,
-        projectType: type,
-        bookCount: type === 'series' ? bookTitles.length : 1,
+        series_name: finalSeriesName,
+        project_type: type,
         genres: selectedGenres,
         pov: pov,
         description,
+        // Map the array to match the Vec<(String, String)> Rust expects
+        books_to_create: booksToCreate.map((b) => [b.id, b.title]),
       });
 
-      const generatedBooks: any[] = [];
+      // Wait a moment for the disk to catch up.
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
-      // Create the Books for Rust
-      if (type === 'standalone') {
-        const bId = crypto.randomUUID();
-        await invoke('create_book', {
-          id: bId,
-          projectId: projectId,
-          title: finalBookName,
-          orderIndex: 0,
-        });
-        generatedBooks.push({ id: bId, title: finalBookName, orderIndex: 0 });
-      } else {
-        for (let i = 0; i < bookTitles.length; i++) {
-          const bId = crypto.randomUUID();
-          const title = bookTitles[i] || `Volume ${i + 1}`;
-          await invoke('create_book', {
-            id: bId,
-            projectId: projectId,
-            title: title,
-            orderIndex: i,
-          });
-          generatedBooks.push({ id: bId, title, orderIndex: i });
-        }
-      }
-
+      // 4. UPDATE FRONTEND STATE
+      // Pass the booksToCreate array with IDs to onConfirm.
       onConfirm({
         id: projectId,
         name: finalBookName,
         seriesName: finalSeriesName,
         volumeNumber: 1,
         type: type,
-        bookCount: type === 'series' ? bookTitles.length : 1,
+        bookCount: booksToCreate.length,
         createdAt: now,
         updatedAt: now,
         genres: selectedGenres,
         pov: pov,
         description,
-        books: generatedBooks,
+        books: booksToCreate,
       } as any);
     } catch (error) {
       console.error('FORGE ERROR:', error);
