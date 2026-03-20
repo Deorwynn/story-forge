@@ -1,4 +1,5 @@
 use rusqlite::{Connection, params};
+use rusqlite::OptionalExtension;
 use tauri::Manager;
 use uuid::Uuid;
 use std::sync::Mutex;
@@ -12,6 +13,7 @@ struct AppState {
 struct BookRow {
     id: String,
     title: String,
+    #[serde(rename = "orderIndex")]
     order_index: i32,
 }
 
@@ -35,16 +37,13 @@ struct ProjectRow {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ManuscriptDoc {
+pub struct ManuscriptDoc {
     id: String,
-    project_id: String,
-    book_id: Option<String>,
-    parent_id: Option<String>,
+    draft_id: String,
+    parent_id: Option<String>, // For Scene -> Chapter nesting
     title: String,
     content: String,
-    doc_type: String, // 'plot', 'chapter', 'note'
-    version: i32,
-    is_archived: bool,
+    doc_type: String,      // 'chapter' or 'scene'
     order_index: i32,
     created_at: i64,
     updated_at: i64,
@@ -54,162 +53,77 @@ fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
     let path = get_db_path(app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
-    let _ = conn.execute("ALTER TABLE projects ADD COLUMN genres TEXT DEFAULT '[]'", ());
-    let _ = conn.execute("ALTER TABLE projects ADD COLUMN pov TEXT DEFAULT ''", ());
-    let _ = conn.execute("ALTER TABLE projects ADD COLUMN series_name TEXT DEFAULT ''", ());
-    let _ = conn.execute("ALTER TABLE projects ADD COLUMN volume_number INTEGER DEFAULT 1", ());
-
+    // Enable WAL mode for better concurrency
     let _ : String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0)).map_err(|e| e.to_string())?;
+    // Enable Foreign Keys (Crucial for ON DELETE CASCADE!)
+    conn.execute("PRAGMA foreign_keys = ON", []).map_err(|e| e.to_string())?;
 
-    let _ = conn.execute("ALTER TABLE projects ADD COLUMN project_type TEXT DEFAULT 'standalone'", ());
-    let _ = conn.execute("ALTER TABLE projects ADD COLUMN genres TEXT DEFAULT '[]'", ());
-
-    // Get current version
-    let current_version: i32 = conn
-    .query_row("PRAGMA user_version", [], |row| row.get(0))
-    .map_err(|e| e.to_string())?;
-
-    // Migration: Version 0 -> 1 (Initial Tables)
-    if current_version < 1 {
-        conn.execute_batch(
-            "BEGIN;
-                -- Added 'IF NOT EXISTS' to prevent the crash you just saw
-                CREATE TABLE IF NOT EXISTS projects (
+    conn.execute_batch(
+        "BEGIN;
+            CREATE TABLE IF NOT EXISTS projects (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
-                type TEXT NOT NULL,
+                project_type TEXT NOT NULL,
+                series_name TEXT DEFAULT '',
                 book_count INTEGER DEFAULT 1,
-                created_at INTEGER
+                volume_number INTEGER DEFAULT 1,
+                genres TEXT DEFAULT '[]',
+                pov TEXT DEFAULT '',
+                description TEXT DEFAULT '',
+                created_at INTEGER,
+                updated_at INTEGER,
+                deleted_at INTEGER
             );
-                CREATE TABLE IF NOT EXISTS characters (
-                id TEXT PRIMARY KEY,
-                project_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                role TEXT,
-                FOREIGN KEY(project_id) REFERENCES projects(id)
-            );
-            PRAGMA user_version = 1;
-            COMMIT;"
-        ).map_err(|e| e.to_string())?;
-    }
 
-    // Migration: Version 1 -> 2
-    if current_version < 2 {
-        conn.execute_batch(
-         "BEGIN;
-            ALTER TABLE projects ADD COLUMN genre TEXT DEFAULT 'Uncategorized';
-            ALTER TABLE projects ADD COLUMN description TEXT DEFAULT '';
-            PRAGMA user_version = 2;
-            COMMIT;"
-        ).map_err(|e| e.to_string())?;
-    }
-
-    if current_version < 3 {
-        conn.execute_batch(
-            "BEGIN;
-                CREATE TABLE IF NOT EXISTS books (
+            CREATE TABLE IF NOT EXISTS books (
                 id TEXT PRIMARY KEY,
                 project_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 description TEXT DEFAULT '',
                 order_index INTEGER NOT NULL,
+                status TEXT DEFAULT 'Planning',
+                target_word_count INTEGER DEFAULT 50000,
                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
-                );
-            PRAGMA user_version = 3;
-            COMMIT;"
-        ).map_err(|e| e.to_string())?;
-    }
+            );
 
-    if current_version < 4 {
-        conn.execute_batch(
-            "BEGIN;
-            -- Add management columns to projects
-            ALTER TABLE projects ADD COLUMN updated_at INTEGER;
-            ALTER TABLE projects ADD COLUMN deleted_at INTEGER; -- For the Trash system
-
-            -- Add progress tracking to books
-            ALTER TABLE books ADD COLUMN status TEXT DEFAULT 'Planning';
-            ALTER TABLE books ADD COLUMN target_word_count INTEGER DEFAULT 50000;
-
-            -- Update existing rows to have a timestamp
-            UPDATE projects SET updated_at = strftime('%s', 'now') WHERE updated_at IS NULL;
-
-            PRAGMA user_version = 4;
-            COMMIT;"
-        ).map_err(|e| e.to_string())?;
-    }
-
-    if current_version < 5 {
-        conn.execute_batch(
-        "BEGIN;
-                CREATE TABLE IF NOT EXISTS documents (
+            CREATE TABLE IF NOT EXISTS drafts (
                 id TEXT PRIMARY KEY,
-                project_id TEXT NOT NULL,
-                book_id TEXT, 
-                parent_id TEXT, -- Allows for 'Revisions' of a 'Draft'
+                book_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                version_number INTEGER NOT NULL,
+                is_complete BOOLEAN DEFAULT 0,
+                is_locked BOOLEAN DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS documents (
+                id TEXT PRIMARY KEY,
+                draft_id TEXT NOT NULL, 
+                parent_id TEXT,
                 title TEXT NOT NULL,
                 content TEXT DEFAULT '',
-                doc_type TEXT NOT NULL, -- 'plot', 'chapter', 'note', 'brainstorm'
-                version INTEGER DEFAULT 1,
-                is_archived BOOLEAN DEFAULT 0, -- For old revisions
+                doc_type TEXT NOT NULL,
                 order_index INTEGER NOT NULL,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
-                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
-                FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE,
+                deleted_at INTEGER,
+                FOREIGN KEY(draft_id) REFERENCES drafts(id) ON DELETE CASCADE,
                 FOREIGN KEY(parent_id) REFERENCES documents(id) ON DELETE CASCADE
             );
-            PRAGMA user_version = 5;
-            COMMIT;"
-        ).map_err(|e| e.to_string())?;
-    }
 
-    if current_version < 6 {
-        conn.execute_batch(
-            "BEGIN;
-            ALTER TABLE projects ADD COLUMN series_name TEXT DEFAULT '';
-            ALTER TABLE projects ADD COLUMN volume_number INTEGER DEFAULT 1;
-            PRAGMA user_version = 6;
-            COMMIT;"
-        ).map_err(|e| e.to_string())?;
-    }
+            CREATE TABLE IF NOT EXISTS user_preferences (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                pref_key TEXT NOT NULL,
+                pref_value TEXT NOT NULL,
+                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_pref_project_key ON user_preferences(project_id, pref_key);
 
-    // Migration: Version 6 -> 7 (Add deleted_at to documents)
-    if current_version < 7 {
-        conn.execute_batch(
-            "BEGIN;
-                ALTER TABLE documents ADD COLUMN deleted_at INTEGER;
-                PRAGMA user_version = 7;
-            COMMIT;"
-        ).map_err(|e| e.to_string())?;
-    }
-
-    // Migration: Version 7 -> 8 (User Preferences Table)
-    if current_version < 8 {
-        conn.execute_batch(
-            "BEGIN;
-                CREATE TABLE IF NOT EXISTS user_preferences (
-                    id TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
-                    pref_key TEXT NOT NULL,
-                    pref_value TEXT NOT NULL,
-                    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
-                );
-                CREATE UNIQUE INDEX idx_pref_project_key ON user_preferences(project_id, pref_key);
-                PRAGMA user_version = 8;
-            COMMIT;"
-        ).map_err(|e| e.to_string())?;
-    }
-
-    if current_version < 9 {
-        conn.execute_batch(
-            "BEGIN;
-                ALTER TABLE projects ADD COLUMN genres TEXT DEFAULT '[]';
-                ALTER TABLE projects ADD COLUMN pov TEXT DEFAULT '';
-                PRAGMA user_version = 9;
-            COMMIT;"
-        ).map_err(|e| e.to_string())?;
-    }
+            PRAGMA user_version = 10; 
+        COMMIT;"
+    ).map_err(|e| e.to_string())?;
 
     Ok(conn)
 }
@@ -220,55 +134,83 @@ fn get_db_path(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, Stri
     Ok(path)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn create_project(
     state: tauri::State<'_, AppState>,
-    id: String, 
-    name: String, 
+    id: String,
+    name: String,
     series_name: String,
-    volume_number: i32,
-    project_type: String, 
-    book_count: i32,
+    project_type: String,
     genres: Vec<String>,
     pov: String,
     description: String,
+    books_to_create: Vec<(String, String)>, // Array of [ID, Title]
 ) -> Result<(), String> {
-    let conn = state.db.lock().unwrap();
+    let mut conn = state.db.lock().unwrap();
     let now = chrono::Utc::now().timestamp();
-
-    // Convert the array to a JSON string for the source-of-truth column
     let genres_json = serde_json::to_string(&genres).unwrap_or_else(|_| "[]".to_string());
-    
-    // Derive the legacy single-string column from the first selection
-    // Using an empty string as fallback to stay consistent with our update/fetch logic
-    let primary_genre = genres.first().cloned().unwrap_or_default();
 
-    conn.execute(
-        "INSERT INTO projects (
-            id, name, series_name, volume_number, type, 
-            book_count, created_at, updated_at, genre, genres, pov, description
-        ) 
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-        (
-            id, 
-            name, 
-            series_name, 
-            volume_number, 
-            project_type, 
-            book_count, 
-            now, 
-            now, 
-            primary_genre, 
-            genres_json, 
-            pov, 
-            description
-        ),
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // 1. Insert Project
+    tx.execute(
+        "INSERT INTO projects (id, name, project_type, series_name, book_count, volume_number, genres, pov, description, created_at, updated_at) 
+         VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7, ?8, ?9, ?9)",
+        (&id, &name, &project_type, &series_name, &(books_to_create.len() as i32), &genres_json, &pov, &description, &now),
     ).map_err(|e| e.to_string())?;
 
+    // 2. Insert Books + Drafts + Chapters + Initial Scenes
+    for (i, (book_id, book_title)) in books_to_create.iter().enumerate() {
+        let draft_id = Uuid::new_v4().to_string();
+        let chapter_id = Uuid::new_v4().to_string();
+        let scene_id = Uuid::new_v4().to_string();
+
+        // Insert Book record
+        tx.execute(
+            "INSERT INTO books (id, project_id, title, order_index) VALUES (?1, ?2, ?3, ?4)",
+            (book_id, &id, book_title, &(i as i32)),
+        ).map_err(|e| e.to_string())?;
+
+        // Insert the "First Draft" container
+        tx.execute(
+            "INSERT INTO drafts (id, book_id, name, version_number, created_at) VALUES (?1, ?2, 'First Draft', 1, ?3)",
+            (&draft_id, book_id, &now),
+        ).map_err(|e| e.to_string())?;
+
+        // Insert the initial Chapter document
+        tx.execute(
+            "INSERT INTO documents (id, draft_id, title, doc_type, order_index, created_at, updated_at) 
+             VALUES (?1, ?2, 'Chapter 1', 'chapter', 0, ?3, ?3)",
+            (&chapter_id, &draft_id, &now),
+        ).map_err(|e| e.to_string())?;
+
+        // Insert the initial Scene document nested under the Chapter
+        tx.execute(
+            "INSERT INTO documents (id, draft_id, parent_id, title, content, doc_type, order_index, created_at, updated_at) 
+             VALUES (?1, ?2, ?3, 'Scene 1', '', 'scene', 0, ?4, ?4)",
+            (&scene_id, &draft_id, &chapter_id, &now),
+        ).map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
+async fn create_initial_draft(state: tauri::State<'_, AppState>, book_id: String) -> Result<String, String> {
+    let conn = state.db.lock().unwrap();
+    let draft_id = Uuid::new_v4().to_string();
+    
+    conn.execute(
+        "INSERT INTO drafts (id, book_id, name, version_number, is_locked) 
+         VALUES (?1, ?2, 'First Draft', 1, 0)",
+        params![draft_id, book_id],
+    ).map_err(|e| e.to_string())?;
+    
+    Ok(draft_id)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 async fn create_book(
     state: tauri::State<'_, AppState>,
     id: String,
@@ -276,20 +218,46 @@ async fn create_book(
     title: String,
     order_index: i32,
 ) -> Result<(), String> {
-    let conn = state.db.lock().unwrap();
+    let mut conn = state.db.lock().unwrap();
+    let now = chrono::Utc::now().timestamp();
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    conn.execute(
+    // 1. Create Book
+    tx.execute(
         "INSERT INTO books (id, project_id, title, order_index) VALUES (?1, ?2, ?3, ?4)",
-        (id, project_id, title, order_index),
+        (&id, &project_id, &title, &order_index),
     ).map_err(|e| e.to_string())?;
 
+    // 2. Create Initial Draft
+    let draft_id = Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO drafts (id, book_id, name, version_number, created_at) VALUES (?1, ?2, 'First Draft', 1, ?3)",
+        (&draft_id, &id, &now),
+    ).map_err(|e| e.to_string())?;
+
+    // 3. Create First Chapter
+    let chapter_id = Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO documents (id, draft_id, parent_id, title, content, doc_type, order_index, created_at, updated_at) 
+         VALUES (?1, ?2, NULL, 'Chapter 1', '', 'chapter', 0, ?3, ?3)",
+        (&chapter_id, &draft_id, &now),
+    ).map_err(|e| e.to_string())?;
+
+    // 4. Create First Scene
+    let scene_id = Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO documents (id, draft_id, parent_id, title, content, doc_type, order_index, created_at, updated_at) 
+        VALUES (?1, ?2, ?3, 'Untitled Scene', '', 'scene', 0, ?4, ?4)",
+        (&scene_id, &draft_id, &chapter_id, &now),
+    ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn create_document(
     state: tauri::State<'_, AppState>,
-    project_id: String,
     book_id: String,
     parent_id: Option<String>,
     doc_type: String,
@@ -298,11 +266,18 @@ async fn create_document(
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp();
 
-    // Determine the Title: If chapter, count existing non-deleted chapters
+    // 1. Find the active draft for this book
+    let draft_id: String = conn.query_row(
+        "SELECT id FROM drafts WHERE book_id = ?1 ORDER BY version_number ASC LIMIT 1",
+        [&book_id],
+        |row| row.get(0),
+    ).map_err(|e| format!("Draft search failed: {}", e))?;
+
+    // 2. Determine the Title: count existing non-deleted chapters in THIS draft
     let title = if doc_type == "chapter" {
         let count: i32 = conn.query_row(
-            "SELECT COUNT(*) FROM documents WHERE book_id = ?1 AND doc_type = 'chapter' AND deleted_at IS NULL",
-            params![book_id],
+            "SELECT COUNT(*) FROM documents WHERE draft_id = ?1 AND doc_type = 'chapter' AND deleted_at IS NULL",
+            [&draft_id],
             |row| row.get(0)
         ).map_err(|e| e.to_string())?;
         format!("Chapter {}", count + 1)
@@ -310,40 +285,40 @@ async fn create_document(
         "New Scene".into()
     };
 
-    // Calculate the next order_index
-    // find the current max index for the same parent and book
+    // 3. Calculate next order_index within the specific parent/draft scope
     let next_index: i32 = conn
         .query_row(
             "SELECT COALESCE(MAX(order_index), -1) + 1 
-            FROM documents 
-            WHERE book_id = ?1 AND parent_id IS ?2 AND deleted_at IS NULL",
-            params![book_id, parent_id],
+             FROM documents 
+             WHERE draft_id = ?1 AND parent_id IS ?2 AND deleted_at IS NULL",
+            rusqlite::params![&draft_id, &parent_id],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
 
     let doc = ManuscriptDoc {
         id: id.clone(),
-        project_id,
-        book_id: Some(book_id),
-        parent_id,
-        title,
+        draft_id: draft_id.clone(),
+        parent_id: parent_id.clone(),
+        title: title.clone(),
         content: "".into(),
-        doc_type,
-        version: 1,
-        is_archived: false,
+        doc_type: doc_type.clone(),
         order_index: next_index,
         created_at: now,
         updated_at: now,
     };
 
+    // 4. Insert into the new schema
     conn.execute(
-        "INSERT INTO documents (id, project_id, book_id, parent_id, title, content, doc_type, version, is_archived, order_index, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-        params![
-            doc.id, doc.project_id, doc.book_id, doc.parent_id, 
-            doc.title, doc.content, doc.doc_type, doc.version, 
-            doc.is_archived, doc.order_index, doc.created_at, doc.updated_at
+        "INSERT INTO documents (
+            id, draft_id, parent_id, title, content, 
+            doc_type, order_index, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        rusqlite::params![
+            &doc.id, &doc.draft_id, &doc.parent_id, 
+            &doc.title, &doc.content, &doc.doc_type, 
+            &doc.order_index, &doc.created_at, &doc.updated_at
         ],
     ).map_err(|e| e.to_string())?;
 
@@ -360,7 +335,7 @@ async fn get_projects(state: tauri::State<'_, AppState>) -> Result<Vec<ProjectRo
             p.name, 
             p.series_name, 
             p.volume_number, 
-            p.type,
+            p.project_type AS type,
             (SELECT COUNT(*) FROM books WHERE project_id = p.id) as actual_book_count, 
             p.genres, 
             p.pov, 
@@ -369,7 +344,11 @@ async fn get_projects(state: tauri::State<'_, AppState>) -> Result<Vec<ProjectRo
             p.updated_at,
             COALESCE(
                 (SELECT json_group_array(
-                    json_object('id', b.id, 'title', b.title, 'orderIndex', b.order_index)
+                    json_object(
+                        'id', b.id, 
+                        'title', b.title, 
+                        'orderIndex', b.order_index
+                    )
                 ) FROM books b WHERE b.project_id = p.id),
                 '[]'
             ) as books_json
@@ -379,35 +358,27 @@ async fn get_projects(state: tauri::State<'_, AppState>) -> Result<Vec<ProjectRo
     ).map_err(|e| e.to_string())?;
 
     let project_rows = stmt.query_map([], |row| {
-        // Handle Genres: fetch raw string, default to empty array JSON if null
-        let genres_raw: String = row.get::<&str, Option<String>>("genres")?
-            .unwrap_or_else(|| "[]".to_string());
+        // Handle Genres JSON
+        let genres_raw: String = row.get::<_, Option<String>>("genres")?.unwrap_or_else(|| "[]".to_string());
+        let parsed_genres: Vec<String> = serde_json::from_str(&genres_raw).unwrap_or_else(|_| vec![]);
 
-        // Parse genres JSON string into Vec<String>
-        let parsed_genres: Vec<String> = serde_json::from_str(&genres_raw).unwrap_or_else(|_| {
-            // Fallback: If it's not valid JSON but has text, wrap that text in a vec
-            if !genres_raw.is_empty() && genres_raw != "[]" {
-                vec![genres_raw]
-            } else {
-                vec![]
-            }
-        });
+        // Handle Books JSON
+        let books_json: String = row.get::<_, Option<String>>("books_json")?.unwrap_or_else(|| "[]".to_string());
+        let parsed_books: Vec<BookRow> = serde_json::from_str(&books_json).unwrap_or_else(|_| vec![]);
 
-        let books_json: String = row.get::<&str, String>("books_json").unwrap_or_else(|_| "[]".to_string());
-        
         Ok(ProjectRow {
             id: row.get("id")?,
             name: row.get("name")?,
-            series_name: row.get::<&str, Option<String>>("series_name")?.unwrap_or_default(),
-            volume_number: row.get::<&str, Option<i32>>("volume_number")?.unwrap_or(1),
-            project_type: row.get("type")?,
+            series_name: row.get::<_, Option<String>>("series_name")?.unwrap_or_default(),
+            volume_number: row.get::<_, Option<i32>>("volume_number")?.unwrap_or(1),
+            project_type: row.get("type")?, 
             book_count: row.get("actual_book_count")?,
             genres: parsed_genres,
-            pov: row.get::<&str, Option<String>>("pov")?.unwrap_or_default(),
-            description: row.get::<&str, Option<String>>("description")?.unwrap_or_default(),
-            created_at: row.get::<&str, Option<i64>>("created_at")?.unwrap_or(0), 
-            updated_at: row.get::<&str, Option<i64>>("updated_at")?.unwrap_or(0),
-            books: serde_json::from_str(&books_json).unwrap_or_else(|_| vec![]),
+            pov: row.get::<_, Option<String>>("pov")?.unwrap_or_default(),
+            description: row.get::<_, Option<String>>("description")?.unwrap_or_default(),
+            created_at: row.get::<_, Option<i64>>("created_at")?.unwrap_or(0), 
+            updated_at: row.get::<_, Option<i64>>("updated_at")?.unwrap_or(0),
+            books: parsed_books,
         })
     }).map_err(|e| e.to_string())?;
 
@@ -424,7 +395,7 @@ async fn get_project_by_id(state: tauri::State<'_, AppState>, id: String) -> Res
             p.name, 
             p.series_name, 
             p.volume_number, 
-            p.type, 
+            p.project_type AS type,
             p.book_count, 
             p.genres, 
             p.pov, 
@@ -452,7 +423,6 @@ async fn get_project_by_id(state: tauri::State<'_, AppState>, id: String) -> Res
             volume_number: row.get::<_, Option<i32>>("volume_number")?.unwrap_or(1),
             project_type: row.get("type")?,
             book_count: row.get("book_count")?,
-            // genre field removed to match updated ProjectRow struct
             genres: serde_json::from_str(&genres_raw).unwrap_or_else(|_| vec![]),
             pov: row.get::<_, Option<String>>("pov")?.unwrap_or_default(),
             description: row.get::<_, Option<String>>("description")?.unwrap_or_default(),
@@ -495,31 +465,42 @@ async fn get_book_documents(
 ) -> Result<Vec<ManuscriptDoc>, String> {
     let conn = state.db.lock().unwrap();
 
+    // 1. Find the ID of the 'First Draft' - using .optional() to handle race conditions
+    let draft_id: Option<String> = conn.query_row(
+        "SELECT id FROM drafts WHERE book_id = ?1 ORDER BY version_number ASC LIMIT 1",
+        [&book_id],
+        |row| row.get(0),
+    ).optional().map_err(|e| e.to_string())?;
+
+    // 2. If no draft exists yet, return an empty vector immediately
+    let draft_id = match draft_id {
+        Some(id) => id,
+        None => return Ok(vec![]),
+    };
+
+    // 3. Fetch chapters and scenes
     let mut stmt = conn
         .prepare(
             "SELECT 
-                id, project_id, book_id, parent_id, title, content, 
-                doc_type, version, is_archived, order_index, created_at, updated_at 
+                id, draft_id, parent_id, title, content, 
+                doc_type, order_index, created_at, updated_at 
              FROM documents 
-             WHERE book_id = ?1 AND is_archived = 0 AND deleted_at IS NULL
+             WHERE draft_id = ?1 AND deleted_at IS NULL
              ORDER BY order_index ASC"
         )
         .map_err(|e| e.to_string())?;
 
-    let doc_rows = stmt.query_map([book_id], |row| {
+    let doc_rows = stmt.query_map([&draft_id], |row| {
         Ok(ManuscriptDoc {
             id: row.get(0)?,
-            project_id: row.get(1)?,
-            book_id: row.get(2)?,
-            parent_id: row.get(3)?,
-            title: row.get(4)?,
-            content: row.get(5)?,
-            doc_type: row.get(6)?,
-            version: row.get(7)?,
-            is_archived: row.get(8)?,
-            order_index: row.get(9)?,
-            created_at: row.get(10)?,
-            updated_at: row.get(11)?,
+            draft_id: row.get(1)?,
+            parent_id: row.get(2)?,
+            title: row.get(3)?,
+            content: row.get(4)?,
+            doc_type: row.get(5)?,
+            order_index: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
         })
     }).map_err(|e| e.to_string())?;
 
@@ -540,33 +521,29 @@ async fn update_project(
 ) -> Result<(), String> {
     let conn = state.db.lock().unwrap();
     
-    // Convert the vector into a JSON string for storage in the 'genres' column
+    // Convert the vector into a JSON string for storage
     let genres_json = serde_json::to_string(&genres).unwrap_or_else(|_| "[]".to_string());
     
-    let primary_genre = genres.first().cloned().unwrap_or_else(|| "".to_string());
-
     conn.execute(
         "UPDATE projects SET 
          name = ?1, 
          series_name = ?2, 
          volume_number = ?3, 
          description = ?4, 
-         genre = ?5, 
-         genres = ?6, 
-         type = ?7, 
-         pov = ?8, 
+         genres = ?5, 
+         project_type = ?6, 
+         pov = ?7, 
          updated_at = strftime('%s', 'now')
-         WHERE id = ?9",
+         WHERE id = ?8",
         (
-            name, 
-            series_name, 
-            volume_number, 
-            description, 
-            primary_genre, // Legacy column still gets the first genre
-            genres_json,   // The source of truth
-            project_type, 
-            pov, 
-            id
+            &name, 
+            &series_name, 
+            &volume_number, 
+            &description, 
+            &genres_json, 
+            &project_type, 
+            &pov, 
+            &id
         ),
     ).map_err(|e| e.to_string())?;
 
@@ -615,38 +592,47 @@ async fn delete_project(state: tauri::State<'_, AppState>, id: String) -> Result
 
 #[tauri::command(rename_all = "snake_case")]
 async fn delete_book(state: tauri::State<'_, AppState>, id: String, project_id: String) -> Result<(), String> {
-    let conn = state.db.lock().unwrap();
+    let mut conn = state.db.lock().unwrap();
     let now = chrono::Utc::now().timestamp();
-
-    // Delete the book
-    conn.execute("DELETE FROM books WHERE id = ?1", params![id])
-        .map_err(|e| e.to_string())?;
-
-    // Re-sequence and update Project Metadata
-    let mut stmt = conn.prepare(
-        "SELECT id FROM books WHERE project_id = ?1 ORDER BY order_index ASC"
-    ).map_err(|e| e.to_string())?;
     
-    let book_ids: Vec<String> = stmt
-        .query_map([&project_id], |row| row.get(0))
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    for (i, b_id) in book_ids.iter().enumerate() {
-        conn.execute(
-            "UPDATE books SET order_index = ?1 WHERE id = ?2",
-            params![i as i32, b_id],
+    // 1. Cascade Delete
+    tx.execute(
+        "DELETE FROM documents WHERE draft_id IN (SELECT id FROM drafts WHERE book_id = ?1)", 
+        [&id]
+    ).map_err(|e| e.to_string())?;
+
+    tx.execute("DELETE FROM drafts WHERE book_id = ?1", [&id]).map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM books WHERE id = ?1", [&id]).map_err(|e| e.to_string())?;
+
+    // 2. RE-SEQUENCE BLOCK
+    // Wrapped in a block so 'stmt' is dropped before tx.commit()
+    let remaining_count = {
+        let mut stmt = tx.prepare(
+            "SELECT id FROM books WHERE project_id = ?1 ORDER BY order_index ASC"
         ).map_err(|e| e.to_string())?;
-    }
+        
+        let book_ids: Vec<String> = stmt
+            .query_map([&project_id], |row| row.get(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
 
-    let remaining_count = book_ids.len() as i32;
+        for (i, b_id) in book_ids.iter().enumerate() {
+            tx.execute(
+                "UPDATE books SET order_index = ?1 WHERE id = ?2",
+                params![i as i32, b_id],
+            ).map_err(|e| e.to_string())?;
+        }
+        book_ids.len() as i32
+    };
 
-    // 3. Update the Project (Sync the count and the type)
+    // 3. Update Project Metadata
     if remaining_count <= 1 {
-        conn.execute(
+        tx.execute(
             "UPDATE projects SET 
-                type = 'standalone', 
+                project_type = 'standalone', 
                 series_name = '', 
                 book_count = 1,
                 updated_at = ?1 
@@ -654,7 +640,7 @@ async fn delete_book(state: tauri::State<'_, AppState>, id: String, project_id: 
             params![now, &project_id],
         ).map_err(|e| e.to_string())?;
     } else {
-        conn.execute(
+        tx.execute(
             "UPDATE projects SET 
                 book_count = ?1, 
                 updated_at = ?2 
@@ -663,6 +649,8 @@ async fn delete_book(state: tauri::State<'_, AppState>, id: String, project_id: 
         ).map_err(|e| e.to_string())?;
     }
 
+    // Now tx is free to be moved into commit()
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -702,7 +690,7 @@ async fn delete_document(
         let default_pattern = format!("Chapter ");
 
         // Check: Does the title start with "Chapter "? 
-        // If so, we assume it's an auto-generated name and update it.
+        // If so, assume it's an auto-generated name and update it.
         if current_title.starts_with(&default_pattern) {
             let new_title = format!("Chapter {}", expected_number);
             conn.execute(
@@ -731,7 +719,7 @@ async fn get_trashed_projects(state: tauri::State<'_, AppState>) -> Result<Vec<P
             p.name, 
             p.series_name, 
             p.volume_number, 
-            p.type, 
+            p.project_type AS type,
             p.book_count, 
             p.genres, 
             p.pov, 
@@ -876,17 +864,18 @@ async fn set_last_active_book(
 async fn get_last_active_book(
     app_handle: tauri::AppHandle,
     project_id: String,
-) -> Result<String, String> {
+) -> Result<Option<String>, String> {
     let path = get_db_path(&app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
-    let res: Result<String, _> = conn.query_row(
+    // Use .optional() to turn a "No Rows" error into a successful "None"
+    let res: Option<String> = conn.query_row(
         "SELECT pref_value FROM user_preferences WHERE project_id = ?1 AND pref_key = 'last_active_book'",
         [project_id],
         |row| row.get(0),
-    );
+    ).optional().map_err(|e| e.to_string())?;
 
-    res.map_err(|e| e.to_string())
+    Ok(res)
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -898,8 +887,7 @@ async fn set_user_preference(
 ) -> Result<(), String> {
     let conn = state.db.lock().unwrap();
 
-    // We generate a unique ID for the row based on project + key
-    // This matches your existing pattern (e.g., project123_active_tab)
+    // Generate a unique ID for the row based on project + key
     let pref_id = format!("{}_{}", project_id, key);
 
     conn.execute(
@@ -916,19 +904,18 @@ async fn get_user_preference(
     state: tauri::State<'_, AppState>,
     project_id: String,
     key: String,
-) -> Result<String, String> {
+) -> Result<Option<String>, String> {
     let conn = state.db.lock().unwrap();
 
-    let res: Result<String, _> = conn.query_row(
+    let res: Option<String> = conn.query_row(
         "SELECT pref_value FROM user_preferences WHERE project_id = ?1 AND pref_key = ?2",
-        params![project_id, key],
+        rusqlite::params![project_id, key],
         |row| row.get(0),
-    );
+    )
+    .optional()
+    .map_err(|e| e.to_string())?;
 
-    match res {
-        Ok(val) => Ok(val),
-        Err(_) => Ok("".to_string()),
-    }
+    Ok(res)
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -980,6 +967,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             create_project, 
+            create_initial_draft,
             create_book, 
             create_document,
             get_projects, 

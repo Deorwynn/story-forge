@@ -59,17 +59,25 @@ export default function ManuscriptContent() {
   ) => {
     try {
       await invoke('create_document', {
-        project_id: projectId,
         book_id: bookId,
         parent_id: parentId,
         doc_type: type,
       });
-      refreshDocuments();
-      if (parentId) {
-        setExpandedChapters((prev) => new Set(prev).add(parentId));
+
+      // Refresh the sidebar list
+      await refreshDocuments();
+
+      // If it's a scene, make sure the parent chapter is expanded
+      if (parentId && type === 'scene') {
+        setExpandedChapters((prev) => {
+          const newSet = new Set(prev);
+          newSet.add(parentId);
+          return newSet;
+        });
       }
     } catch (err) {
-      console.error(err);
+      console.error('FORGE ERROR in handleAddDocument:', err);
+      alert(`Failed to create ${type}: ${err}`);
     }
   };
 

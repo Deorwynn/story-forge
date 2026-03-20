@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Project } from './types/project';
 import { ManuscriptDoc } from './types/document';
@@ -55,6 +55,7 @@ function App() {
   // Persist Project selection to LocalStorage
   useEffect(() => {
     if (activeProject && !isInitialLoad) {
+      console.log('activeProject: ', activeProject);
       // Calculate the current book safely
       // If we just converted to standalone, volumeNumber should always effectively be 1
       const safeIndex =
@@ -112,6 +113,7 @@ function App() {
         // Find what the DB thinks is the last book
         let dbTargetVolume = 1;
         if (savedBookId) {
+          console.log('rawData: ', rawData);
           const idx = sanitizedBooks.findIndex(
             (b: any) => b.id === savedBookId
           );
@@ -125,6 +127,7 @@ function App() {
 
         let finalVolume = 1;
         if (volumeFromStorage > 0) {
+          console.log('rawData: ', rawData);
           finalVolume = volumeFromStorage;
         } else if (dbTargetVolume > 0) {
           finalVolume = dbTargetVolume;
@@ -134,7 +137,8 @@ function App() {
         const activeBookId = sanitizedBooks[finalVolume - 1]?.id;
 
         if (activeBookId) {
-          const savedTab = await invoke<string>('get_user_preference', {
+          console.log('rawData: ', rawData);
+          const savedTab = await invoke<string | null>('get_user_preference', {
             project_id: activeProject.id,
             key: `active_tab_book_${activeBookId}`,
           }).catch(() => null);
@@ -183,29 +187,37 @@ function App() {
     return () => clearTimeout(delayDebounceFn);
   }, [character]);
 
-  const fetchDocs = async () => {
-    if (!activeProject) return;
+  // 1. Memoize the ID so we only trigger fetches when the book actually changes
+  const currentBookId = useMemo(() => {
+    return activeProject?.books?.[activeProject.volumeNumber - 1]?.id;
+  }, [activeProject?.books, activeProject?.volumeNumber]);
 
-    const currentBookId =
-      activeProject.books?.[activeProject.volumeNumber - 1]?.id;
+  // 2. Define fetchDocs at the top level so return statement can see it
+  const fetchDocs = useCallback(async () => {
+    if (!currentBookId) return;
+
+    setIsLoadingDocs(true);
+    try {
+      const result = await invoke<ManuscriptDoc[]>('get_book_documents', {
+        bookId: currentBookId,
+      });
+      setDocuments(result);
+    } catch (err) {
+      console.error('Failed to fetch documents:', err);
+    } finally {
+      setIsLoadingDocs(false);
+    }
+  }, [currentBookId]);
+
+  // 3. The "Auto-Loader"
+  useEffect(() => {
+    // Clear the screen immediately when switching books
+    setDocuments([]);
 
     if (currentBookId) {
-      // Clear old docs
-      setDocuments([]);
-      setIsLoadingDocs(true);
-
-      try {
-        const result = await invoke<ManuscriptDoc[]>('get_book_documents', {
-          bookId: currentBookId,
-        });
-        setDocuments(result);
-      } catch (err) {
-        console.error('Failed to fetch documents:', err);
-      } finally {
-        setIsLoadingDocs(false);
-      }
+      fetchDocs();
     }
-  };
+  }, [currentBookId, fetchDocs]);
 
   const handleEnterProject = async (baseProject: Project) => {
     setIsInitialLoad(true); // Show the curtain immediately
@@ -258,11 +270,6 @@ function App() {
       setIsInitialLoad(false);
     }
   };
-
-  useEffect(() => {
-    setDocuments([]);
-    if (activeProject?.id) fetchDocs();
-  }, [activeProject?.id, activeProject?.volumeNumber]);
 
   const handleUpdateProject = (updated: Project) => {
     if (activeProject?.id === updated.id) {
