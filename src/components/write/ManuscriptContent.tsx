@@ -148,7 +148,7 @@ export default function ManuscriptContent() {
 
   return (
     <div className="flex flex-col gap-1">
-      {chapters.map((ch) => {
+      {chapters.map((ch, idx) => {
         const isCollapsed = !expandedChapters.has(ch.id);
         const scenes = documents
           .filter((d) => d.parentId === ch.id)
@@ -158,6 +158,7 @@ export default function ManuscriptContent() {
           <div key={ch.id} className="flex flex-col">
             <SidebarItem
               title={ch.title}
+              index={idx}
               subtitle={`0 words • ${scenes.length} ${scenes.length === 1 ? 'scene' : 'scenes'}`}
               isCollapsible
               isCollapsed={isCollapsed}
@@ -172,9 +173,10 @@ export default function ManuscriptContent() {
 
             {!isCollapsed && (
               <div className="flex flex-col mt-0.5">
-                {scenes.map((scene) => (
+                {scenes.map((scene, sIdx) => (
                   <SidebarItem
                     key={scene.id}
+                    index={sIdx}
                     title={scene.title}
                     subtitle="0 words"
                     level={1}
