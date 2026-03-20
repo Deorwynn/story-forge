@@ -15,6 +15,7 @@ interface SidebarItemProps {
   icon?: ReactElement;
   onRename?: (newTitle: string) => void;
   isRenamingInitial?: boolean;
+  index?: number;
 }
 
 export default function SidebarItem({
@@ -30,6 +31,7 @@ export default function SidebarItem({
   icon,
   onRename,
   isRenamingInitial = false,
+  index = 0,
 }: SidebarItemProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRenaming, setIsRenaming] = useState(isRenamingInitial);
@@ -75,9 +77,12 @@ export default function SidebarItem({
 
   return (
     <div
-      className={`group relative flex items-center rounded-lg transition-colors pr-1
+      className={`group relative flex items-center rounded-lg transition-colors pr-1 sidebar-item-animate
       ${isActive ? 'bg-purple-50' : 'hover:bg-slate-50'}`}
-      style={{ paddingLeft: `${level * 16 + 8}px` }}
+      style={{
+        paddingLeft: `${level * 16 + 8}px`,
+        animationDelay: `${index * 30}ms`,
+      }}
     >
       <button
         onClick={handleMainClick}
