@@ -658,53 +658,77 @@ async fn delete_book(state: tauri::State<'_, AppState>, id: String, project_id: 
 async fn delete_document(
     state: tauri::State<'_, AppState>, 
     id: String, 
-    book_id: String
+    _book_id: String 
 ) -> Result<(), String> {
-    let conn = state.db.lock().unwrap();
+    let mut conn = state.db.lock().unwrap();
     let now = chrono::Utc::now().timestamp();
 
-    // Soft delete the target document
-    conn.execute(
+    // 1. Get the draft_id and parent_id first
+    let (draft_id, parent_id): (String, Option<String>) = conn.query_row(
+        "SELECT draft_id, parent_id FROM documents WHERE id = ?1",
+        params![id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).map_err(|e| format!("Could not find document context: {}", e))?;
+
+    // 2. Start a Transaction
+    // Everything from here to the commit is treated as a single atomic unit.
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // 3. Soft delete inside the transaction
+    tx.execute(
         "UPDATE documents SET deleted_at = ?1 WHERE id = ?2",
         params![now, id],
     ).map_err(|e| e.to_string())?;
 
-    // Fetch all remaining chapters
-    let mut stmt = conn.prepare(
-        "SELECT id, title FROM documents 
-         WHERE book_id = ?1 AND doc_type = 'chapter' AND deleted_at IS NULL 
-         ORDER BY order_index ASC"
-    ).map_err(|e| e.to_string())?;
+    // 4. Fetch siblings
+    let chapters: Vec<(String, String)> = {
+        let mut stmt = tx.prepare(
+            "SELECT id, title FROM documents 
+             WHERE draft_id = ?1 
+             AND (parent_id IS ?2)
+             AND doc_type = 'chapter' 
+             AND deleted_at IS NULL 
+             ORDER BY order_index ASC"
+        ).map_err(|e| e.to_string())?;
 
-    // Store both ID and Title
-    let chapters: Vec<(String, String)> = stmt
-        .query_map([book_id], |row| Ok((row.get(0)?, row.get(1)?)))
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        let query_params = params![draft_id, parent_id];
 
-    // Smart Re-sequencing
+        let mapped_rows = stmt.query_map(query_params, |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        }).map_err(|e| e.to_string())?;
+
+        let mut results = Vec::new();
+        for row in mapped_rows {
+            results.push(row.map_err(|e| e.to_string())?);
+        }
+        results // Return the vector
+    }; // stmt and query_params are dropped here
+
+    // 5. Re-sequence loop
     for (i, (chap_id, current_title)) in chapters.iter().enumerate() {
         let new_pos = i as i32;
         let expected_number = new_pos + 1;
-        let default_pattern = format!("Chapter ");
+        let default_pattern = "Chapter "; 
 
         // Check: Does the title start with "Chapter "? 
         // If so, assume it's an auto-generated name and update it.
-        if current_title.starts_with(&default_pattern) {
+        if current_title.starts_with(default_pattern) {
             let new_title = format!("Chapter {}", expected_number);
-            conn.execute(
+            tx.execute(
                 "UPDATE documents SET title = ?1, order_index = ?2 WHERE id = ?3",
                 params![new_title, new_pos, chap_id],
             ).map_err(|e| e.to_string())?;
         } else {
             // It's a custom name - keep the title, just update the position.
-            conn.execute(
+            tx.execute(
                 "UPDATE documents SET order_index = ?1 WHERE id = ?2",
                 params![new_pos, chap_id],
             ).map_err(|e| e.to_string())?;
         }
     }
+
+    // 6. Commit all changes
+    tx.commit().map_err(|e| e.to_string())?;
 
     Ok(())
 }
