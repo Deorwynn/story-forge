@@ -63,14 +63,29 @@ export default function SidebarItem({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleBlur();
+    // 1. Stop the event from bubbling up to the <button>
+    e.stopPropagation();
+
+    // 2. Prevent the spacebar from acting as a "Click" on the parent button
+    if (e.key === ' ') {
+      // Allow the space to be typed, but don't let it trigger button behaviors
+      e.stopPropagation();
+    }
+
+    if (e.key === 'Enter') {
+      handleBlur();
+    }
+
     if (e.key === 'Escape') {
       setEditValue(title);
       setIsRenaming(false);
     }
   };
 
-  const handleMainClick = () => {
+  const handleMainClick = (e: React.MouseEvent | React.KeyboardEvent) => {
+    // If the click happened while we were renaming, do nothing.
+    if (isRenaming) return;
+
     if (isCollapsible && onToggle) onToggle();
     if (onClick) onClick();
   };
@@ -85,6 +100,7 @@ export default function SidebarItem({
       }}
     >
       <button
+        type="button"
         onClick={handleMainClick}
         className="flex flex-1 flex-col py-1 text-left transition-colors cursor-pointer min-w-0"
       >
