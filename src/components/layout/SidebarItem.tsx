@@ -82,7 +82,7 @@ export default function SidebarItem({
     }
   };
 
-  const handleMainClick = (e: React.MouseEvent | React.KeyboardEvent) => {
+  const handleMainClick = (_e: React.MouseEvent | React.KeyboardEvent) => {
     // If the click happened while we were renaming, do nothing.
     if (isRenaming) return;
 
