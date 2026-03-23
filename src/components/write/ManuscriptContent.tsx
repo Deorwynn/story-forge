@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { Plus, FileText, CornerDownRight } from 'lucide-react';
@@ -135,10 +136,12 @@ export default function ManuscriptContent() {
   ];
 
   const chapters = documents
-    .filter((d) => d.docType === 'chapter')
+    .filter(
+      (d) => d.docType === 'chapter' && d.id && String(d.id).trim() !== ''
+    )
     .sort((a, b) => a.orderIndex - b.orderIndex);
 
-  if (!isHydrated) {
+  if (!isHydrated && (!documents || documents.length === 0)) {
     return (
       <div className="p-6 text-slate-300 animate-pulse text-xs tracking-widest uppercase">
         Loading Manuscript...
@@ -147,61 +150,91 @@ export default function ManuscriptContent() {
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      {chapters.map((ch, idx) => {
-        const isCollapsed = !expandedChapters.has(ch.id);
-        const scenes = documents
-          .filter((d) => d.parentId === ch.id)
-          .sort((a, b) => a.orderIndex - b.orderIndex);
+    <div key={bookId || 'no-book'} className="flex flex-col gap-1">
+      <AnimatePresence mode="popLayout" initial={false}>
+        {chapters.map((ch, idx) => {
+          const isCollapsed = !expandedChapters.has(ch.id);
+          const scenes = documents
+            .filter(
+              (d) => d.parentId === ch.id && d.id && String(d.id).trim() !== ''
+            )
+            .sort((a, b) => a.orderIndex - b.orderIndex);
 
-        return (
-          <div key={ch.id} className="flex flex-col">
-            <SidebarItem
-              title={ch.title}
-              index={idx}
-              subtitle={`0 words • ${scenes.length} ${scenes.length === 1 ? 'scene' : 'scenes'}`}
-              isCollapsible
-              isCollapsed={isCollapsed}
-              onToggle={() => toggleChapter(ch.id)}
-              actions={getDocActions(ch)}
-              icon={
-                <FileText className="w-4 h-4 text-purple-400 flex-shrink-0" />
-              }
-              isRenamingInitial={renamingId === ch.id}
-              onRename={(newTitle) => handleRename(ch.id, newTitle)}
-            />
+          return (
+            <motion.div
+              layout={isHydrated ? 'position' : false}
+              key={ch.id}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{
+                type: 'spring',
+                stiffness: 500,
+                damping: 30,
+                mass: 1,
+              }}
+              className="flex flex-col"
+            >
+              <SidebarItem
+                title={ch.title}
+                index={idx}
+                subtitle={`0 words • ${scenes.length} ${scenes.length === 1 ? 'scene' : 'scenes'}`}
+                isCollapsible
+                isCollapsed={isCollapsed}
+                onToggle={() => toggleChapter(ch.id)}
+                actions={getDocActions(ch)}
+                icon={
+                  <FileText className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                }
+                isRenamingInitial={renamingId === ch.id}
+                onRename={(newTitle) => handleRename(ch.id, newTitle)}
+              />
 
-            {!isCollapsed && (
-              <div className="flex flex-col mt-0.5">
-                {scenes.map((scene, sIdx) => (
-                  <SidebarItem
-                    key={scene.id}
-                    index={sIdx}
-                    title={scene.title}
-                    subtitle="0 words"
-                    level={1}
-                    actions={getDocActions(scene)}
-                    icon={
-                      <CornerDownRight className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                    }
-                    isRenamingInitial={renamingId === scene.id}
-                    onRename={(newTitle) => handleRename(scene.id, newTitle)}
-                  />
-                ))}
-                <button
-                  onClick={() => handleAddDocument(ch.id, 'scene')}
-                  className="ml-9 py-1.5 text-left text-[12px] text-slate-400 hover:text-purple-500 transition-colors cursor-pointer flex items-center gap-2"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>Add scene</span>
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      })}
+              {!isCollapsed && (
+                <div className="flex flex-col mt-0.5">
+                  <AnimatePresence mode="popLayout" initial={false}>
+                    {scenes.map((scene, sIdx) => (
+                      <motion.div
+                        layout={isHydrated}
+                        key={scene.id}
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                      >
+                        <SidebarItem
+                          key={scene.id}
+                          index={sIdx}
+                          title={scene.title}
+                          subtitle="0 words"
+                          level={1}
+                          actions={getDocActions(scene)}
+                          icon={
+                            <CornerDownRight className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                          }
+                          isRenamingInitial={renamingId === scene.id}
+                          onRename={(newTitle) =>
+                            handleRename(scene.id, newTitle)
+                          }
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                  <button
+                    onClick={() => handleAddDocument(ch.id, 'scene')}
+                    className="ml-9 py-1.5 text-left text-[12px] text-slate-400 hover:text-purple-500 transition-colors cursor-pointer flex items-center gap-2"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add scene</span>
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
 
       <button
+        key={`add-btn-${bookId}`}
         onClick={() => handleAddDocument(null, 'chapter')}
         className="w-full mt-4 py-2 border border-dashed border-slate-200 rounded-xl text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:border-purple-200 hover:text-purple-500 hover:bg-purple-50/30 transition-all cursor-pointer flex items-center justify-center gap-2"
       >

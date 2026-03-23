@@ -10,9 +10,11 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@tailwindcss/vite": "^4.2.1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
+    "framer-motion": "^12.38.0",
     "lucide-react": "^0.576.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
