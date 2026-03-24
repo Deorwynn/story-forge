@@ -14,6 +14,8 @@ export default function ManuscriptContent() {
   );
   const [isHydrated, setIsHydrated] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [animatingOutId, setAnimatingOutId] = useState<string | null>(null);
+  const [isSwitchingBook, setIsSwitchingBook] = useState(false);
 
   const projectId = project?.id;
   const bookId =
@@ -23,6 +25,12 @@ export default function ManuscriptContent() {
           // Series: Find by volume number
           (b: any) => b.orderIndex === (project?.volumeNumber || 1) - 1
         )?.id || project?.books?.[0]?.id;
+
+  useEffect(() => {
+    setIsSwitchingBook(true);
+    const timer = setTimeout(() => setIsSwitchingBook(false), 50); // Micro-delay
+    return () => clearTimeout(timer);
+  }, [bookId]);
 
   useEffect(() => {
     if (projectId) {
@@ -84,15 +92,27 @@ export default function ManuscriptContent() {
 
   const handleDelete = async () => {
     if (!deleteId || !bookId) return;
+
     try {
+      // 1. Mark this ID as "animating out"
+      setAnimatingOutId(deleteId);
+
+      // 2. Wait a tiny bit for the Framer 'exit' animation to start/finish
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
+      // 3. Now perform the actual database delete
       await invoke('delete_document', {
         id: deleteId,
-        book_id: bookId, // Required for cascade re-index
+        book_id: bookId,
       });
+
+      // 4. Cleanup and refresh
       setDeleteId(null);
+      setAnimatingOutId(null);
       await refreshDocuments();
     } catch (err) {
       console.error('Delete failed:', err);
+      setAnimatingOutId(null);
     }
   };
 
@@ -139,6 +159,8 @@ export default function ManuscriptContent() {
     .filter(
       (d) => d.docType === 'chapter' && d.id && String(d.id).trim() !== ''
     )
+    // Ensure the one we are deleting doesn't just vanish from the array
+    // until the animation is done.
     .sort((a, b) => a.orderIndex - b.orderIndex);
 
   if (!isHydrated && (!documents || documents.length === 0)) {
@@ -150,8 +172,11 @@ export default function ManuscriptContent() {
   }
 
   return (
-    <div key={bookId || 'no-book'} className="flex flex-col gap-1">
-      <AnimatePresence mode="popLayout" initial={false}>
+    <div
+      key={bookId || 'no-book'}
+      className={`flex flex-col gap-1 transition-all ${isSwitchingBook ? 'overflow-hidden' : ''}`}
+    >
+      <AnimatePresence initial={false} presenceAffectsLayout={false}>
         {chapters.map((ch, idx) => {
           const isCollapsed = !expandedChapters.has(ch.id);
           const scenes = documents
@@ -162,18 +187,28 @@ export default function ManuscriptContent() {
 
           return (
             <motion.div
-              layout={isHydrated ? 'position' : false}
               key={ch.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{
-                type: 'spring',
-                stiffness: 500,
-                damping: 30,
-                mass: 1,
+              layout={
+                !isSwitchingBook && animatingOutId !== null ? 'position' : false
+              }
+              initial={false}
+              animate={{
+                opacity: 1,
+                scale: 1,
+                height: 'auto',
               }}
-              className="flex flex-col"
+              exit={{
+                opacity: 0,
+                scale: 0.95,
+                height: 0,
+                transition: {
+                  opacity: { duration: 0.2 },
+                  scale: { duration: 0.2 },
+                  height: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
+                },
+              }}
+              className="flex flex-col overflow-hidden"
+              style={{ transformOrigin: 'center top' }}
             >
               <SidebarItem
                 title={ch.title}
@@ -192,14 +227,30 @@ export default function ManuscriptContent() {
 
               {!isCollapsed && (
                 <div className="flex flex-col mt-0.5">
-                  <AnimatePresence mode="popLayout" initial={false}>
+                  <AnimatePresence initial={false}>
                     {scenes.map((scene, sIdx) => (
                       <motion.div
-                        layout={isHydrated}
                         key={scene.id}
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
+                        layoutDependency={documents.length}
+                        layout={animatingOutId !== null ? 'position' : false}
+                        initial={false}
+                        animate={{
+                          opacity: 1,
+                          scale: 1,
+                          height: 'auto',
+                        }}
+                        exit={{
+                          opacity: 0,
+                          scale: 0.95,
+                          height: 0,
+                          transition: {
+                            opacity: { duration: 0.2 },
+                            scale: { duration: 0.2 },
+                            height: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
+                          },
+                        }}
+                        style={{ transformOrigin: 'center top' }}
+                        className="overflow-hidden"
                       >
                         <SidebarItem
                           key={scene.id}
