@@ -184,10 +184,7 @@ export default function ManuscriptContent() {
     .sort((a, b) => a.orderIndex - b.orderIndex);
 
   return (
-    <div
-      key={bookId || 'no-book'}
-      className={'flex flex-col gap-1 transition-all'}
-    >
+    <div key={bookId || 'no-book'} className={'flex flex-col transition-all'}>
       {!isHydrated ? (
         <div className="p-6 text-slate-300 animate-pulse text-xs tracking-widest uppercase">
           Loading...
