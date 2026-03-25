@@ -253,7 +253,6 @@ export default function ManuscriptContent() {
                             <motion.div
                               key={scene.id}
                               layoutDependency={documents.length}
-                              // maybe we don't need layout?
                               layout={
                                 animatingOutId !== null ? 'position' : false
                               }
