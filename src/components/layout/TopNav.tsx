@@ -83,10 +83,13 @@ export default function TopNav({
   const NavTitleButton = (
     <button
       className={`flex flex-col items-center group transition-all py-1 px-4 rounded-xl relative outline-none
+        /* Accessibility Focus Ring */
+      focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2
       ${project.type === 'series' ? 'cursor-pointer' : 'cursor-default'}
       ${project.type === 'series' && isOpen ? 'bg-slate-50' : ''} 
       ${project.type === 'series' && !isOpen ? 'hover:bg-slate-50/80' : ''} 
     `}
+      tabIndex={project.type === 'series' ? 0 : -1}
     >
       {/* TOP ROW: Metadata */}
       <div className="flex items-center gap-2 mb-1 min-h-[14px]">
@@ -158,30 +161,65 @@ export default function TopNav({
                   </div>
 
                   <div className="max-h-64 overflow-y-auto no-scrollbar space-y-1">
-                    {books.map((book) => (
-                      <DropdownMenu.Item
-                        key={book.id}
-                        onSelect={() => {
-                          onBookSwitch({
-                            ...book,
-                            orderIndex: book.order_index ?? book.orderIndex,
-                          });
-                        }}
-                        className={`w-full text-left px-4 py-3 rounded-xl transition-all flex flex-col cursor-pointer outline-none ${
-                          book.id === currentBookId
-                            ? 'bg-purple-50 text-purple-700'
-                            : 'hover:bg-slate-50 text-slate-600 focus:bg-slate-50'
-                        }`}
-                      >
-                        <span className="text-[9px] font-bold uppercase opacity-60">
-                          Volume
-                          {(book.order_index ?? book.orderIndex ?? 0) + 1}
-                        </span>
-                        <span className="text-sm font-semibold">
-                          {book.title}
-                        </span>
-                      </DropdownMenu.Item>
-                    ))}
+                    {books.map((book) => {
+                      const isActive = book.id === currentBookId;
+
+                      return (
+                        <DropdownMenu.Item
+                          key={book.id}
+                          onSelect={() => {
+                            onBookSwitch({
+                              ...book,
+                              orderIndex: book.order_index ?? book.orderIndex,
+                            });
+                          }}
+                          className={`w-full text-left px-4 py-3 rounded-xl transition-all flex flex-col cursor-pointer outline-none relative overflow-hidden
+                            ${
+                              isActive
+                                ? 'bg-purple-50 text-purple-700'
+                                : 'text-slate-600 data-[highlighted]:bg-slate-50 data-[highlighted]:text-slate-900'
+                            }
+                          `}
+                        >
+                          {/* Left Border */}
+                          <div
+                            className={`absolute top-0 left-0 w-1 bg-[#9333ea] z-10
+                            ${isActive ? 'h-full' : 'h-0 group-focus:h-full'}
+                          `}
+                            aria-hidden="true"
+                          />
+
+                          <span className="text-[9px] font-bold uppercase opacity-60 relative z-20">
+                            Volume{' '}
+                            {(book.order_index ?? book.orderIndex ?? 0) + 1}
+                          </span>
+                          <span className="text-sm font-semibold">
+                            {book.title}
+                          </span>
+                        </DropdownMenu.Item>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-slate-50 flex justify-center gap-3">
+                    <div
+                      className="flex items-center gap-1.5 opacity-40"
+                      aria-label="Use arrow keys to navigate"
+                    >
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-sans border border-slate-200">
+                        ↑↓
+                      </kbd>
+                      <span className="text-[9px] font-medium uppercase tracking-tight">
+                        Navigate
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 opacity-40">
+                      <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-sans border border-slate-200">
+                        Enter
+                      </kbd>
+                      <span className="text-[9px] font-medium uppercase tracking-tight">
+                        Select
+                      </span>
+                    </div>
                   </div>
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
