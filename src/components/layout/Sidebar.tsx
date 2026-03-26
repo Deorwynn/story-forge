@@ -17,21 +17,23 @@ export default function Sidebar({ activeTab }: SidebarProps) {
           (b: any) => b.orderIndex === (project?.volumeNumber || 1) - 1
         )?.id || project?.books?.[0]?.id;
   return (
-    <aside className="w-64 bg-[#f1f5f9] border-r border-slate-200 p-4 h-full flex flex-col overflow-y-auto no-scrollbar">
+    <aside className="w-64 bg-[#f1f5f9] border-r border-slate-200 h-full flex flex-col">
       {/* Dynamic Header based on Tab */}
-      <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">
-        {activeTab === 'Write'
-          ? 'Manuscript'
-          : activeTab === 'Characters'
-            ? 'Characters'
-            : activeTab === 'Plot'
-              ? 'Outline'
-              : 'Navigation'}
-      </h3>
+      <div className="p-4">
+        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+          {activeTab === 'Write'
+            ? 'Manuscript'
+            : activeTab === 'Characters'
+              ? 'Characters'
+              : activeTab === 'Plot'
+                ? 'Outline'
+                : 'Navigation'}
+        </h3>
+      </div>
 
-      {/* Conditional Content Rendering */}
+      {/* Scrollable Conditional Content Rendering */}
       <div
-        className="flex-1"
+        className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pl-6 pr-2 pb-6 scrollbar-gutter-stable"
         key={activeTab === 'Write' ? `manuscript-${bookId}` : activeTab}
       >
         {activeTab === 'Write' && <ManuscriptContent />}

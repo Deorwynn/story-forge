@@ -1,7 +1,46 @@
 @import 'tailwindcss';
 
+/* Custom Scrollbar */
+@layer base {
+  :root {
+    --scrollbar-thumb: rgba(147, 51, 234, 0.2);
+    --scrollbar-thumb-interaction: #9333ea;
+  }
+
+  /* Global Settings (Firefox) */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  /* Webkit (Tauri/Safari/Chrome) Dimensions */
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Unified Thumb */
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background-clip: content-box;
+    transition: background 0.2s ease-in-out;
+  }
+
+  /* Interaction Trigger */
+  *::-webkit-scrollbar-thumb:hover,
+  *::-webkit-scrollbar-thumb:active {
+    background-color: var(--scrollbar-thumb-interaction) !important;
+  }
+}
+
 :root {
-  background-color: #f8f9fc; /* The light grey-blue background from your Figma */
+  background-color: #f8f9fc;
   color: #1a1a1e;
 }
 
