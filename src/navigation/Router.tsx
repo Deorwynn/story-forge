@@ -1,4 +1,4 @@
-import CharacterTab from '../components/characters/CharacterTab';
+import CharactersTab from '../components/characters/CharactersTab';
 
 export type ForgeView =
   | 'Write'
@@ -17,7 +17,7 @@ export const VIEW_COMPONENTS: Record<ForgeView, React.ComponentType<any>> = {
     <div className="p-8 text-slate-400">Revisions View (Coming Soon)</div>
   ),
   Plot: () => <div className="p-8 text-slate-400">Plot View (Coming Soon)</div>,
-  Characters: CharacterTab,
+  Characters: CharactersTab,
   Worldbuilding: () => (
     <div className="p-8 text-slate-400">Worldbuilding View (Coming Soon)</div>
   ),
