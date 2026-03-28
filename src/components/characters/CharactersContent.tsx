@@ -49,7 +49,6 @@ export default function CharactersContent() {
                 index={cIdx}
                 title={char.name}
                 level={1}
-                actions={[{ label: 'Rename', icon: '✏️', onClick: () => {} }]}
                 icon={<User className="w-3.5 h-3.5 text-slate-400" />}
               />
             </motion.div>
@@ -87,7 +86,6 @@ export default function CharactersContent() {
               <SidebarItem
                 title={group}
                 index={idx}
-                actions={[]}
                 subtitle={viewMode === 'role' ? '0 characters' : '1 character'}
                 isCollapsible
                 isCollapsed={isCollapsed}

@@ -5,7 +5,7 @@ import ActionMenu, { ActionItem } from '../shared/ActionMenu';
 interface SidebarItemProps {
   title: string;
   subtitle?: string;
-  actions: ActionItem[];
+  actions?: ActionItem[];
   onClick?: () => void;
   isActive?: boolean;
   isCollapsible?: boolean;
@@ -21,7 +21,7 @@ interface SidebarItemProps {
 export default function SidebarItem({
   title,
   subtitle,
-  actions,
+  actions = [],
   onClick,
   isActive,
   isCollapsible,
@@ -153,13 +153,16 @@ export default function SidebarItem({
       </button>
 
       {/* Action Menu: Visible on hover OR if the menu is actually open */}
-      <div
-        className={`flex-shrink-0 transition-opacity ${
-          isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-        }`}
-      >
-        <ActionMenu actions={actions} onOpenChange={setIsMenuOpen} />
-      </div>
+
+      {actions && actions.length > 0 && (
+        <div
+          className={`flex-shrink-0 transition-opacity ${
+            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
+        >
+          <ActionMenu actions={actions} onOpenChange={setIsMenuOpen} />
+        </div>
+      )}
     </div>
   );
 }
