@@ -4,6 +4,7 @@ import { Project } from '../../types/project';
 import { mapRawProject } from '../../utils/projectMapper';
 import NewProjectForm from './NewProjectForm';
 import EditProjectForm from './EditProjectForm';
+import EmptyState from '../shared/EmptyState';
 import ProjectCard from './ProjectCard';
 import Button from '../shared/Button';
 import ConfirmModal from '../shared/ConfirmModal';
@@ -98,20 +99,12 @@ export default function ProjectLibrary({
 
         <div className="relative z-10 w-full max-w-[1400px] px-8 py-12 md:px-12 lg:px-16">
           {existingProjects.length === 0 ? (
-            <div className="flex flex-col items-center justify-center mt-20 animate-in fade-in zoom-in-95 duration-500">
-              <div className="w-full max-w-md text-center py-16 px-8 border border-slate-200 rounded-[2.5rem] bg-white shadow-xl shadow-purple-500/5">
-                <div className="w-16 h-16 bg-purple-50 rounded-2xl flex items-center justify-center mx-auto mb-6 rotate-3">
-                  <span className="text-2xl">✨</span>
-                </div>
-                <p className="text-slate-800 mb-2 font-bold text-xl">
-                  Your library is quiet.
-                </p>
-                <p className="text-slate-400 text-sm font-medium leading-relaxed">
-                  Every masterpiece starts with a single click. <br />
-                  Forge your first world today.
-                </p>
-              </div>
-            </div>
+            <EmptyState
+              title="Your library is quiet."
+              description="Every masterpiece starts with a single click. Forge your first world today."
+              actionLabel="New Project"
+              onAction={() => setIsCreating(true)}
+            />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 mb-16 w-full animate-in fade-in slide-in-from-bottom-6 duration-1000">
               {existingProjects.map((project) => (

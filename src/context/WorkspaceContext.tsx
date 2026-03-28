@@ -1,10 +1,11 @@
 import { createContext, useContext, ReactNode } from 'react';
 import { Project } from '../types/project';
+import { Character } from '../types/character';
 import { ManuscriptDoc } from '../types/document';
 
 interface WorkspaceContextType {
   project: Project | null;
-  character: { id: string; name: string };
+  character: Character | null;
   status: string;
   documents: ManuscriptDoc[];
   isLoadingDocs: boolean;
