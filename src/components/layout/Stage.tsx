@@ -16,7 +16,7 @@ export default function Stage({ children, variant = 'focused' }: StageProps) {
 
   return (
     <main className="flex-1 h-full overflow-y-auto custom-scrollbar bg-white">
-      <div className={`mx-auto px-8 py-12 ${maxWidthClass} min-h-full`}>
+      <div className={`mx-auto px-8 py-6 ${maxWidthClass} min-h-full`}>
         {children}
       </div>
     </main>
