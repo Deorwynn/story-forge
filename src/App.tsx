@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Project } from './types/project';
+import { Character } from './types/character';
 import { ManuscriptDoc } from './types/document';
 import { ForgeView, VIEW_COMPONENTS } from './navigation/Router';
 import { WorkspaceProvider } from './context/WorkspaceContext';
@@ -12,7 +13,7 @@ import ProjectLibrary from './components/home/ProjectLibrary';
 import Sidebar from './components/layout/Sidebar';
 
 function App() {
-  const [character, setCharacter] = useState({ id: 'char_001', name: '' });
+  const [character, setCharacter] = useState<Character | null>(null);
   const [status, setStatus] = useState('Waiting for input...');
   const [view, setView] = useState<'library' | 'trash'>('library');
   const [documents, setDocuments] = useState<ManuscriptDoc[]>([]);
@@ -164,6 +165,8 @@ function App() {
   }, [activeProject?.id]); // Only runs when entering a project
 
   useEffect(() => {
+    if (!character) return;
+
     const delayDebounceFn = setTimeout(async () => {
       if (character.name.length > 0) {
         try {
@@ -358,8 +361,11 @@ function App() {
           status,
           documents,
           isLoadingDocs,
-          updateCharacter: (name: string) =>
-            setCharacter({ ...character, name }),
+          updateCharacter: (name: string) => {
+            if (character) {
+              setCharacter({ ...character, name });
+            }
+          },
           refreshDocuments: fetchDocs,
         }}
       >
