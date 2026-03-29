@@ -102,7 +102,7 @@ export default function SidebarItem({
       <button
         type="button"
         onClick={handleMainClick}
-        className="flex flex-1 flex-col py-1 text-left transition-colors cursor-pointer min-w-0"
+        className="flex flex-1 flex-col py-1 text-left transition-colors cursor-pointer min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-inset rounded-md"
       >
         {/* Top Row: Chevron + Title */}
         <div className="flex items-center gap-2 w-full">
@@ -157,10 +157,16 @@ export default function SidebarItem({
       {actions && actions.length > 0 && (
         <div
           className={`flex-shrink-0 transition-opacity ${
-            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            isMenuOpen
+              ? 'opacity-100'
+              : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
           }`}
         >
-          <ActionMenu actions={actions} onOpenChange={setIsMenuOpen} />
+          <ActionMenu
+            actions={actions}
+            onOpenChange={setIsMenuOpen}
+            label={`Options for ${title}`}
+          />
         </div>
       )}
     </div>
