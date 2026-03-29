@@ -337,7 +337,7 @@ export default function ManuscriptContent() {
                 }}
                 key={`add-btn-${bookId}`}
                 onClick={() => handleAddDocument(null, 'chapter')}
-                className="w-full mt-4 py-2 border border-dashed border-slate-200 rounded-xl text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:border-purple-200 hover:text-purple-500 hover:bg-purple-50/30 transition-all cursor-pointer flex items-center justify-center gap-2 sidebar-item-animate"
+                className="w-full mt-4 py-2 border border-dashed border-slate-200 rounded-xl text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:border-purple-200 hover:text-purple-500 hover:bg-purple-50/30 transition-all cursor-pointer flex items-center justify-center gap-2 sidebar-item-animate outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Chapter</span>

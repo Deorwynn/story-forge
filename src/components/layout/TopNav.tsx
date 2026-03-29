@@ -248,7 +248,7 @@ export default function TopNav({
           <button
             key={m}
             onClick={() => onTabChange(m)}
-            className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-inset ${
               m === activeTab
                 ? 'bg-purple-50 text-purple-700 shadow-[inset_0_0_0_1px_rgba(147,51,234,0.1)]'
                 : 'text-slate-500 hover:text-slate-800'

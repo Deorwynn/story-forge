@@ -24,7 +24,7 @@ export default function SegmentedControl({
         <button
           key={opt.value}
           onClick={() => onChange(opt.value)}
-          className={`flex-1 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+          className={`flex-1 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${
             activeValue === opt.value
               ? 'bg-white text-purple-600 shadow-sm'
               : 'text-slate-500 hover:text-slate-700'

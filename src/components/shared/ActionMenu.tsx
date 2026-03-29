@@ -11,14 +11,20 @@ export interface ActionItem {
 interface ActionMenuProps {
   actions: ActionItem[];
   onOpenChange?: (open: boolean) => void;
+  label?: string;
 }
 
-export default function ActionMenu({ actions, onOpenChange }: ActionMenuProps) {
+export default function ActionMenu({
+  actions,
+  onOpenChange,
+  label = 'Actions',
+}: ActionMenuProps) {
   return (
     <DropdownMenu.Root onOpenChange={onOpenChange}>
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
+          aria-label={label}
           className={`p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-md transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:opacity-100`}
         >
           <ThreeDotsIcon className="w-4 h-4" />
