@@ -4,6 +4,9 @@ use tauri::Manager;
 use uuid::Uuid;
 use std::sync::Mutex;
 
+mod models;
+mod commands;
+
 struct AppState {
     db: Mutex<rusqlite::Connection>,
 }
@@ -119,6 +122,22 @@ fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
                 pref_value TEXT NOT NULL,
                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS characters (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            book_id TEXT, -- Nullable: links to specific book if not global
+            display_name TEXT NOT NULL,
+            role TEXT DEFAULT 'Supporting',
+            race TEXT DEFAULT 'Human',
+            portrait_path TEXT,
+            is_global BOOLEAN DEFAULT 1,
+            metadata TEXT NOT NULL, -- This stores our CharacterMetadata JSON
+            last_modified INTEGER NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE SET NULL
+        );
+
             CREATE UNIQUE INDEX IF NOT EXISTS idx_pref_project_key ON user_preferences(project_id, pref_key);
 
             PRAGMA user_version = 10; 
@@ -1014,7 +1033,12 @@ pub fn run() {
             get_last_active_book,
             set_user_preference,
             get_user_preference,
-            rename_document
+            rename_document,
+            commands::character_commands::create_character,
+            commands::character_commands::get_characters,
+            commands::character_commands::update_character,
+            commands::character_commands::delete_character,
+            commands::character_commands::globalize_project_characters,
             ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
