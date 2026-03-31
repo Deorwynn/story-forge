@@ -114,6 +114,11 @@ export default function EditProjectForm({
           title: name,
         });
 
+        // Make all characters global so they don't stay linked to deleted books
+        await invoke('globalize_project_characters', {
+          projectId: project.id,
+        });
+
         // Update the state we send back to App.tsx
         updatedBooksForState.push({
           ...survivingBook,
@@ -205,6 +210,11 @@ export default function EditProjectForm({
           const remainingBook = updatedBooks[0];
           // Use the name from the input field as the master title
           const masterTitle = name;
+
+          // Make all characters global so they don't stay linked to deleted books
+          await invoke('globalize_project_characters', {
+            projectId: project.id,
+          });
 
           const updatePayload = {
             id: project.id,
