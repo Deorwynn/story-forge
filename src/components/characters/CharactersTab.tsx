@@ -1,29 +1,47 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Users } from 'lucide-react';
+import { Users, UserSearch } from 'lucide-react'; // Added UserSearch
 import Stage from '../layout/Stage';
 import ContextualToolbar from '../shared/ContextualToolbar';
 import SegmentedControl from '../shared/SegmentedControl';
 import EmptyState from '../shared/EmptyState';
 import { useWorkspace } from '../../context/WorkspaceContext';
+import { NewCharacterForm } from './NewCharacterForm';
+import CharacterSheetView from './CharacterSheetView';
+import { invoke } from '@tauri-apps/api/core';
 
 export default function CharacterTab() {
-  const { character, updateCharacter } = useWorkspace();
+  const { character, updateCharacter, project } = useWorkspace();
   const [activeTab, setActiveTab] = useState<'sheet' | 'themes'>('sheet');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [hasAnyCharacters, setHasAnyCharacters] = useState<boolean | null>(
+    null
+  );
 
-  const handleCreateFirst = () => {
-    console.log('Opening character creation...'); // to be implemented
+  const projectId = project?.id || '';
+
+  // Check if any characters exist for the Empty vs Idle state
+  useEffect(() => {
+    if (projectId) {
+      invoke<any[]>('get_characters', { projectId })
+        .then((list) => setHasAnyCharacters(list.length > 0))
+        .catch(() => setHasAnyCharacters(false));
+    }
+  }, [projectId, character]); // Re-check when a character is created/deleted
+
+  const handleCharacterCreated = (newChar: any) => {
+    updateCharacter(newChar);
+    setIsModalOpen(false);
+    setHasAnyCharacters(true);
   };
-
-  const isCharacterActive = !!character;
 
   return (
     <Stage variant="wide">
-      {isCharacterActive ? (
+      {character ? (
         <>
           <ContextualToolbar
-            title={character.name || 'Unnamed Character'}
-            status="Main Character"
+            title="Character Profile"
+            status={character?.display_name || 'Unnamed'}
           >
             <SegmentedControl
               activeValue={activeTab}
@@ -44,17 +62,9 @@ export default function CharacterTab() {
               transition={{ duration: 0.15 }}
             >
               {activeTab === 'sheet' ? (
-                <div className="bg-white border border-slate-200 p-10 rounded-3xl shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
-                  <label className="block text-[10px] font-bold text-purple-400 uppercase tracking-widest mb-3">
-                    Character Name
-                  </label>
-                  <input
-                    className="w-full text-xl font-medium text-slate-800 bg-transparent border-b border-slate-100 focus:border-purple-400 outline-none pb-2 transition-colors"
-                    value={character.name}
-                    onChange={(e) => updateCharacter(e.target.value)}
-                    placeholder="e.g. Alaric the Bold"
-                  />
-                </div>
+                <motion.div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+                  <CharacterSheetView characterId={character.id} />
+                </motion.div>
               ) : (
                 <div className="p-10 text-slate-500">
                   <h1 className="text-lg font-semibold mb-4">Theme Settings</h1>
@@ -66,8 +76,21 @@ export default function CharacterTab() {
             </motion.div>
           </AnimatePresence>
         </>
+      ) : hasAnyCharacters ? (
+        /* IDLE STATE: Characters exist, but none selected */
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="h-full flex items-center justify-center"
+        >
+          <EmptyState
+            icon={<UserSearch className="w-8 h-8 text-slate-300" />}
+            title="No character selected"
+            description="Pick a character from the sidebar to continue forging their story."
+          />
+        </motion.div>
       ) : (
-        /* Empty State */
+        /* EMPTY STATE: No characters at all */
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -75,12 +98,20 @@ export default function CharacterTab() {
         >
           <EmptyState
             icon={<Users className="w-8 h-8" />}
-            title="You don't have any character sheets for this story yet."
-            description="Every masterpiece starts with a single character. Create a character sheet and forge your first hero (or villain)!"
+            title="You don't have any character sheets yet."
+            description="Every masterpiece starts with a hero. Create a sheet to begin."
             actionLabel="Create your first character sheet"
-            onAction={handleCreateFirst}
+            onAction={() => setIsModalOpen(true)}
           />
         </motion.div>
+      )}
+
+      {isModalOpen && projectId && (
+        <NewCharacterForm
+          projectId={projectId}
+          onCharacterCreated={handleCharacterCreated}
+          onCancel={() => setIsModalOpen(false)}
+        />
       )}
     </Stage>
   );

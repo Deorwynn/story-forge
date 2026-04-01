@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import { ForgeView } from '../../navigation/Router';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import ManuscriptContent from '../write/ManuscriptContent';
@@ -8,7 +9,9 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ activeTab }: SidebarProps) {
-  const { project } = useWorkspace();
+  // 1. Grab 'project' and 'updateCharacter' from the Context
+  const { project, updateCharacter, character } = useWorkspace();
+
   const bookId =
     project?.type === 'standalone'
       ? project.books?.[0]?.id // Standalone: Always use the only book available
@@ -16,6 +19,7 @@ export default function Sidebar({ activeTab }: SidebarProps) {
           // Series: Find by volume number
           (b: any) => b.orderIndex === (project?.volumeNumber || 1) - 1
         )?.id || project?.books?.[0]?.id;
+
   return (
     <aside className="w-64 bg-[#f1f5f9] border-r border-slate-200 h-full flex flex-col">
       {/* Dynamic Header based on Tab */}
@@ -34,10 +38,33 @@ export default function Sidebar({ activeTab }: SidebarProps) {
       {/* Scrollable Conditional Content Rendering */}
       <div
         className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pl-6 pr-2 pb-6 scrollbar-gutter-stable"
-        key={activeTab === 'Write' ? `manuscript-${bookId}` : activeTab}
+        key={
+          activeTab === 'Write'
+            ? `manuscript-${bookId}`
+            : `sidebar-${activeTab}-${project?.id}`
+        }
       >
         {activeTab === 'Write' && <ManuscriptContent />}
-        {activeTab === 'Characters' && <CharactersContent />}
+
+        {activeTab === 'Characters' && (
+          <CharactersContent
+            key={`chars-${project?.id}`}
+            projectId={project?.id || ''}
+            activeCharacterId={character?.id}
+            onSelectCharacter={async (id) => {
+              const fullChar = await invoke('get_character', { id });
+              updateCharacter(fullChar as any);
+
+              if (project?.id) {
+                await invoke('set_user_preference', {
+                  project_id: project.id,
+                  key: 'last_active_character',
+                  value: id,
+                });
+              }
+            }}
+          />
+        )}
 
         {/* Fallback for tabs that aren't built yet */}
         {!['Write', 'Characters'].includes(activeTab) && (
