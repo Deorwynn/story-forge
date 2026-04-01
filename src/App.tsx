@@ -14,7 +14,7 @@ import Sidebar from './components/layout/Sidebar';
 
 function App() {
   const [character, setCharacter] = useState<Character | null>(null);
-  const [status, setStatus] = useState('Waiting for input...');
+  const [status] = useState('Waiting for input...');
   const [view, setView] = useState<'library' | 'trash'>('library');
   const [documents, setDocuments] = useState<ManuscriptDoc[]>([]);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
@@ -97,10 +97,16 @@ function App() {
       if (!activeProject?.id) return;
       if (!isInitialLoad) return;
 
+      // 1. Reset character immediately when switching projects to prevent flash of old character
+      setCharacter(null);
+
       try {
+        // 2. Fetch Project Data from DB to ensure we have the latest, especially for the books
         const rawData = await invoke<any>('get_project_by_id', {
           id: activeProject.id,
         });
+
+        // 3. Resolve Volume/Book
         const savedBookId = await invoke<string>('get_last_active_book', {
           project_id: activeProject.id,
         });
@@ -134,6 +140,29 @@ function App() {
         // Resolve the specific Book ID to fetch the tab
         const activeBookId = sanitizedBooks[finalVolume - 1]?.id;
 
+        // 4. HYDRATE CHARACTER
+        try {
+          const lastCharId = await invoke<string | null>(
+            'get_user_preference',
+            {
+              project_id: activeProject.id,
+              key: 'last_active_character',
+            }
+          ).catch(() => null);
+
+          if (lastCharId) {
+            const fullChar = await invoke<any>('get_character', {
+              id: lastCharId,
+            });
+            if (fullChar && fullChar.project_id === activeProject.id) {
+              setCharacter(fullChar);
+            }
+          }
+        } catch (charErr) {
+          console.log('No character preference found.');
+        }
+
+        // 5. HYDRATE TAB
         if (activeBookId) {
           const savedTab = await invoke<string | null>('get_user_preference', {
             project_id: activeProject.id,
@@ -145,6 +174,7 @@ function App() {
           }
         }
 
+        // 6. APPLY PROJECT STATE
         setActiveProject({
           ...rawData,
           books: sanitizedBooks,
@@ -163,28 +193,6 @@ function App() {
 
     syncProjectWithDb();
   }, [activeProject?.id]); // Only runs when entering a project
-
-  useEffect(() => {
-    if (!character) return;
-
-    const delayDebounceFn = setTimeout(async () => {
-      if (character.name.length > 0) {
-        try {
-          setStatus('Saving...');
-          await invoke('save_character_to_disk', {
-            id: character.id,
-            jsonData: JSON.stringify(character),
-          });
-          setStatus('Saved to local device!');
-        } catch (error) {
-          console.error('Save failed:', error);
-          setStatus('Error saving!');
-        }
-      }
-    }, 1000);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [character]);
 
   // 1. Memoize the ID so we only trigger fetches when the book actually changes
   const currentBookId = useMemo(() => {
@@ -361,9 +369,23 @@ function App() {
           status,
           documents,
           isLoadingDocs,
-          updateCharacter: (name: string) => {
-            if (character) {
-              setCharacter({ ...character, name });
+          updateCharacter: (updates: string | Partial<Character> | null) => {
+            if (updates === null) {
+              setCharacter(null);
+              return;
+            }
+
+            if (typeof updates === 'string') {
+              if (character) {
+                setCharacter({ ...character, display_name: updates });
+              }
+            } else {
+              setCharacter((prev) => {
+                // If we are setting a whole new character object (it has an 'id')
+                // replace the state entirely instead of merging.
+                if (!prev || (updates as any).id) return updates as Character;
+                return { ...prev, ...updates };
+              });
             }
           },
           refreshDocuments: fetchDocs,

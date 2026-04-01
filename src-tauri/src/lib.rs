@@ -1036,6 +1036,7 @@ pub fn run() {
             rename_document,
             commands::character_commands::create_character,
             commands::character_commands::get_characters,
+            commands::character_commands::get_character,
             commands::character_commands::update_character,
             commands::character_commands::delete_character,
             commands::character_commands::globalize_project_characters,

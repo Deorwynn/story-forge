@@ -21,7 +21,11 @@ export default function ModalShell({
       <div
         className={`relative bg-white border border-slate-200 p-10 rounded-[2.5rem] w-full ${maxWidth} shadow-2xl text-slate-800 z-10 animate-in zoom-in-95 duration-300`}
       >
-        {title && <h2 className="text-3xl font-bold mb-8 italic">{title}</h2>}
+        {title && (
+          <h2 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-8 italic">
+            {title}
+          </h2>
+        )}
         {children}
       </div>
     </div>
