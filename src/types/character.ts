@@ -1,5 +1,6 @@
 export interface Character {
   id: string;
+  project_id: string;
   display_name: string; // The full name for the UI
   role: 'Main' | 'Supporting' | 'Side' | 'Other';
   metadata: {

@@ -63,7 +63,10 @@ export default function CharacterTab() {
             >
               {activeTab === 'sheet' ? (
                 <motion.div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
-                  <CharacterSheetView characterId={character.id} />
+                  <CharacterSheetView
+                    key={character.id}
+                    characterId={character.id}
+                  />
                 </motion.div>
               ) : (
                 <div className="p-10 text-slate-500">

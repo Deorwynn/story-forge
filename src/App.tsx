@@ -227,6 +227,7 @@ function App() {
   }, [currentBookId, fetchDocs]);
 
   const handleEnterProject = async (baseProject: Project) => {
+    setCharacter(null);
     setIsInitialLoad(true); // Show the curtain immediately
 
     try {

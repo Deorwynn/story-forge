@@ -1,14 +1,15 @@
 use rusqlite::{Connection, params};
 use rusqlite::OptionalExtension;
 use tauri::Manager;
+use tauri::Emitter;
 use uuid::Uuid;
 use std::sync::Mutex;
 
 mod models;
 mod commands;
 
-struct AppState {
-    db: Mutex<rusqlite::Connection>,
+pub struct AppState {
+    pub db: Mutex<rusqlite::Connection>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -1007,6 +1008,14 @@ pub fn run() {
             }
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // We emit an event to the frontend to say "Hey, we are closing!"
+                let _ = window.emit("tauri://close-requested", ());
+                // We prevent the window from closing immediately
+                api.prevent_close();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             create_project, 

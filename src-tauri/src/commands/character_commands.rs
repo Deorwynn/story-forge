@@ -1,6 +1,7 @@
 use rusqlite::{params, Connection };
 use uuid::Uuid;
 use chrono::Utc;
+use crate::AppState;
 use crate::models::character::{Character, CharacterMetadata};
 
 #[tauri::command]
@@ -118,16 +119,16 @@ pub async fn get_character(
 
 #[tauri::command]
 pub async fn update_character(
-    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
     character: Character,
 ) -> Result<(), String> {
-    let path = crate::get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    // Lock the already-open connection
+    let db = state.db.lock().map_err(|e| e.to_string())?;
 
     let now = Utc::now().timestamp();
     let metadata_json = serde_json::to_string(&character.metadata).map_err(|e| e.to_string())?;
 
-    conn.execute(
+    db.execute(
         "UPDATE characters SET 
             display_name = ?1, 
             role = ?2, 

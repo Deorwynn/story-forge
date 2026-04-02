@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useWorkspace } from '../../context/WorkspaceContext';
 import { Users, User, Plus } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import SidebarItem from '../layout/SidebarItem';
@@ -19,6 +20,7 @@ export default function CharactersContent({
   activeCharacterId,
   onSelectCharacter,
 }: CharactersContentProps) {
+  const { character: globalCharacter } = useWorkspace();
   const [viewMode, setViewMode] = useState<ViewMode>('role');
   const [characters, setCharacters] = useState<any[]>([]);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
@@ -48,7 +50,31 @@ export default function CharactersContent({
     if (projectId) {
       fetchCharacters();
     }
-  }, [projectId, activeCharacterId]);
+  }, [projectId]);
+
+  // Sync the specific character name in the list when the global state updates
+  useEffect(() => {
+    if (globalCharacter?.id && globalCharacter.project_id === projectId) {
+      setCharacters((prev) => {
+        return prev.map((c) => {
+          if (c.id === globalCharacter.id) {
+            // Only update if something actually changed to prevent render loops
+            if (
+              c.display_name !== globalCharacter.display_name ||
+              c.role !== globalCharacter.role
+            ) {
+              return {
+                ...c,
+                display_name: globalCharacter.display_name,
+                role: globalCharacter.role,
+              };
+            }
+          }
+          return c;
+        });
+      });
+    }
+  }, [globalCharacter, projectId]);
 
   // Derive alphabet list based on actual characters existing
   const alphabet = useMemo(() => {
