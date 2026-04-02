@@ -52,7 +52,11 @@ export default function CharacterSheetHeader({
 
         <input
           value={localName}
-          onChange={(e) => setLocalName(e.target.value)}
+          onChange={(e) => {
+            const newVal = e.target.value;
+            setLocalName(newVal);
+            onSaveName(newVal);
+          }}
           onBlur={handleBlur}
           onKeyDown={(e) => e.key === 'Enter' && handleBlur()}
           className="block w-full bg-transparent text-4xl font-serif font-bold text-slate-800 outline-none border-b-2 border-transparent hover:border-slate-100 focus:border-purple-200 transition-all placeholder:text-slate-200"
