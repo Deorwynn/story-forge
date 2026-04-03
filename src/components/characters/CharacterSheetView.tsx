@@ -14,19 +14,22 @@ export default function CharacterSheetView({
   const { updateCharacter } = useWorkspace();
   const [character, setCharacter] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [showSavingText, setShowSavingText] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [localData, setLocalData] = useState<any>(null);
   const [lastSavedData, setLastSavedData] = useState<string>('');
+
   const dataRef = useRef(localData);
   const masterRef = useRef(character);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const displayDataRef = useRef<any>(null);
 
   // 1. Fetch character data on mount or ID change
   useEffect(() => {
     let isMounted = true;
 
     const loadData = async () => {
-      // Set to null first to trigger the "Loading grimoire..." state
-      // This prevents seeing the OLD character's data while the new one loads
-      setLocalData(null);
+      setIsLoading(true);
 
       try {
         const data = await invoke<Character>('get_character', {
@@ -34,10 +37,21 @@ export default function CharacterSheetView({
         });
         if (isMounted) {
           setCharacter(data);
+          displayDataRef.current = { ...data };
           setLocalData({ ...data });
+          // CRITICAL: Update the snapshot so the auto-save doesn't fire immediately
+          setLastSavedData(
+            JSON.stringify({
+              name: data.display_name,
+              metadata: data.metadata,
+              role: data.role,
+            })
+          );
+          setIsLoading(false);
         }
       } catch (err) {
         console.error('Load failed:', err);
+        setIsLoading(false);
       }
     };
 
@@ -52,6 +66,9 @@ export default function CharacterSheetView({
     async (dataToSave: any) => {
       if (!dataToSave || !dataToSave.id) return;
       setIsSaving(true);
+      setShowSavingText(true);
+
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
       try {
         await invoke('update_character', {
@@ -70,6 +87,9 @@ export default function CharacterSheetView({
         console.error('❌ Save failed:', err);
       } finally {
         setIsSaving(false);
+        saveTimeoutRef.current = setTimeout(() => {
+          setShowSavingText(false);
+        }, 1000);
       }
     },
     [updateCharacter]
@@ -160,31 +180,50 @@ export default function CharacterSheetView({
     }));
   };
 
-  if (!localData)
-    return <div className="p-10 text-slate-400">Loading grimoire...</div>;
+  // ONLY return the hard loader if we have zero data (initial boot)
+  if (!localData && isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-slate-400 animate-pulse font-serif italic">
+          Opening library...
+        </div>
+      </div>
+    );
+  }
+
+  if (!localData) return null;
 
   return (
-    <div className="max-w-4xl mx-auto py-12 px-6">
+    <div className="max-w-4xl mx-auto py-12 px-6 relative">
       {/* Saving Indicator */}
-      <div className="h-6 mb-4 flex justify-end">
-        {isSaving && (
-          <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest animate-pulse">
-            Saving to library...
-          </span>
-        )}
+      <div className="h-8 mb-2 flex justify-between items-center px-1">
+        <div className="absolute top-4 right-6">
+          {isLoading && (
+            <span className="text-[9px] text-slate-300 animate-pulse uppercase">
+              Syncing...
+            </span>
+          )}
+        </div>
+
+        <span
+          className={`text-[10px] font-bold text-emerald-500 uppercase tracking-widest transition-opacity duration-500 ${showSavingText ? 'opacity-100' : 'opacity-0'}`}
+        >
+          {isSaving ? 'Saving to library...' : 'Changes persisted'}
+        </span>
       </div>
 
-      <CharacterSheetHeader
-        displayName={localData.display_name}
-        role={localData.role}
-        onSaveName={(name) => handleUpdate('display_name', name)}
-      />
+      <div className={isLoading ? 'pointer-events-none' : ''}>
+        <CharacterSheetHeader
+          displayName={localData.display_name}
+          role={localData.role}
+          onSaveName={(name) => handleUpdate('display_name', name)}
+        />
 
-      <CharacterSheetIdentity
-        character={localData}
-        onUpdate={handleMetadataUpdate}
-      />
-
+        <CharacterSheetIdentity
+          character={localData}
+          onUpdate={handleMetadataUpdate}
+        />
+      </div>
       {/* Next sections go here: Physical, Backstory, etc. */}
     </div>
   );
