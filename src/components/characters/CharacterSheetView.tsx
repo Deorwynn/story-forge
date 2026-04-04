@@ -165,18 +165,29 @@ export default function CharacterSheetView({
     };
   }, []);
 
-  const handleUpdate = (field: string, value: any) => {
-    setLocalData((prev: any) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
   // Helper for metadata updates (nested objects)
   const handleMetadataUpdate = (key: string, value: any) => {
     setLocalData((prev: any) => ({
       ...prev,
       metadata: { ...prev.metadata, [key]: value },
+    }));
+  };
+
+  const handleNamePartUpdate = (
+    first: string,
+    middle: string,
+    last: string,
+    derivedFull: string
+  ) => {
+    setLocalData((prev: any) => ({
+      ...prev,
+      display_name: derivedFull, // instantly update the sidebar name as well
+      metadata: {
+        ...prev.metadata,
+        first_name: first,
+        middle_name: middle,
+        last_name: last,
+      },
     }));
   };
 
@@ -214,9 +225,9 @@ export default function CharacterSheetView({
 
       <div className={isLoading ? 'pointer-events-none' : ''}>
         <CharacterSheetHeader
-          displayName={localData.display_name}
+          metadata={localData.metadata}
           role={localData.role}
-          onSaveName={(name) => handleUpdate('display_name', name)}
+          onSaveNameParts={handleNamePartUpdate}
         />
 
         <CharacterSheetIdentity
