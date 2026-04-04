@@ -91,13 +91,17 @@ export default function CharacterSheetHeader({
   const [isEditing, setIsEditing] = useState(false);
   const [isAddingMiddle, setIsAddingMiddle] = useState(false);
   const [isAddingLast, setIsAddingLast] = useState(false);
-  const [isInitialRender, setIsInitialRender] = useState(true);
+  const [isClosing, setIsClosing] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const allowTransitions = useRef(false);
+  const prevIdRef = useRef(metadata.id);
 
-  useEffect(() => {
-    // Start by suppressing animations
-    setIsInitialRender(true);
+  if (prevIdRef.current !== metadata.id) {
+    prevIdRef.current = metadata.id;
+
+    // Tell the DOM we are switching characters
+    containerRef.current?.setAttribute('data-switching', 'true');
 
     setFirst(metadata.first_name || '');
     setMiddle(metadata.middle_name || '');
@@ -105,10 +109,19 @@ export default function CharacterSheetHeader({
     setIsEditing(false);
     setIsAddingMiddle(false);
     setIsAddingLast(false);
+    setIsClosing(false);
 
-    // Re-enable animations after the browser has painted the new character
-    const timer = setTimeout(() => setIsInitialRender(false), 50);
-    return () => clearTimeout(timer);
+    // Remove the block after the browser has painted the new character
+    requestAnimationFrame(() => {
+      containerRef.current?.removeAttribute('data-switching');
+    });
+  }
+
+  useEffect(() => {
+    const timer = requestAnimationFrame(() => {
+      allowTransitions.current = true;
+    });
+    return () => cancelAnimationFrame(timer);
   }, [metadata.id]);
 
   // Sync values if metadata changes externally (without resetting UI)
@@ -126,42 +139,42 @@ export default function CharacterSheetHeader({
     onSaveNameParts(f, m, l, full);
   };
 
-  const handleFocus = () => {
-    setIsEditing(true);
-  };
+  const handleBlur = () => {
+    setIsClosing(true);
 
-  const handleBlur = (_e: React.FocusEvent) => {
     setTimeout(() => {
       if (
         containerRef.current &&
         !containerRef.current.contains(document.activeElement)
       ) {
         setIsEditing(false);
-        // Only hide the inputs if they are actually empty strings
-        setMiddle((prev: string) => {
-          if (!prev.trim()) setIsAddingMiddle(false);
-          return prev;
-        });
-        setLast((prev: string) => {
-          if (!prev.trim()) setIsAddingLast(false);
-          return prev;
-        });
+        setIsAddingMiddle(false);
+        setIsAddingLast(false);
+        setTimeout(() => setIsClosing(false), 500);
+      } else {
+        setIsClosing(false);
       }
     }, 50);
   };
 
-  const showMiddle = (middle && middle.length > 0) || isAddingMiddle;
-  const showLast = (last && last.length > 0) || isAddingLast;
+  const hasMiddle = middle && middle.trim().length > 0;
+  const hasLast = last && last.trim().length > 0;
 
-  const transitionClass = isInitialRender
-    ? ''
-    : 'transition-all duration-500 ease-in-out';
+  const isInteractive =
+    isEditing || isAddingMiddle || isAddingLast || isClosing;
+
+  const transitionClass = isInteractive
+    ? 'transition-all duration-500 ease-in-out group-data-[switching=true]:transition-none'
+    : '';
 
   return (
     <div
       ref={containerRef}
       className="flex flex-col sm:flex-row items-start gap-8 mb-12"
-      onFocus={handleFocus}
+      onFocus={() => {
+        setIsEditing(true);
+        setIsClosing(false);
+      }}
       onBlur={handleBlur}
     >
       {/* PORTRAIT PLACEHOLDER */}
@@ -198,13 +211,13 @@ export default function CharacterSheetHeader({
 
           <div
             className={`flex items-end overflow-hidden ${transitionClass} ${
-              isEditing || showMiddle
+              isEditing || hasMiddle || isAddingMiddle
                 ? 'max-w-[300px] opacity-100'
                 : 'max-w-0 opacity-0'
             }`}
           >
             <div className="flex items-end min-w-max">
-              {showMiddle ? (
+              {hasMiddle || isAddingMiddle ? (
                 <AutoInput
                   label="Middle Name"
                   value={middle}
@@ -213,7 +226,12 @@ export default function CharacterSheetHeader({
                   autoFocus={isAddingMiddle}
                   onChange={(val) => {
                     setMiddle(val);
-                    handleChange(first, val, last);
+                    onSaveNameParts(
+                      first,
+                      val,
+                      last,
+                      [first, val, last].filter(Boolean).join(' ')
+                    );
                   }}
                 />
               ) : (
@@ -228,14 +246,14 @@ export default function CharacterSheetHeader({
 
           {/* LAST NAME WRAPPER */}
           <div
-            className={`flex items-end ${transitionClass} ${
-              isEditing || showLast
-                ? 'opacity-100 translate-x-0'
-                : 'opacity-0 -translate-x-4'
+            className={`flex items-end overflow-hidden ${transitionClass} ${
+              isEditing || hasLast || isAddingLast
+                ? 'max-w-[300px] opacity-100'
+                : 'max-w-0 opacity-0'
             }`}
           >
             <div className="flex items-end min-w-max">
-              {showLast ? (
+              {hasLast || isAddingLast ? (
                 <AutoInput
                   label="Last Name"
                   value={last}
@@ -244,7 +262,12 @@ export default function CharacterSheetHeader({
                   autoFocus={isAddingLast}
                   onChange={(val) => {
                     setLast(val);
-                    handleChange(first, middle, val);
+                    onSaveNameParts(
+                      first,
+                      middle,
+                      val,
+                      [first, middle, val].filter(Boolean).join(' ')
+                    );
                   }}
                 />
               ) : (
