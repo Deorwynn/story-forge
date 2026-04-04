@@ -120,12 +120,28 @@ pub async fn get_character(
 #[tauri::command]
 pub async fn update_character(
     state: tauri::State<'_, AppState>,
-    character: Character,
+    mut character: Character, 
 ) -> Result<(), String> {
     // Lock the already-open connection
     let db = state.db.lock().map_err(|e| e.to_string())?;
-
     let now = Utc::now().timestamp();
+
+    // 1. Logic Layer: Derive display_name from metadata struct fields
+    let first = &character.metadata.first_name;
+    let middle = character.metadata.middle_name.as_deref().unwrap_or("");
+    let last = character.metadata.last_name.as_deref().unwrap_or("");
+
+    let derived_name = vec![first, middle, last]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    // Only update if we actually have name parts in the metadata
+    if !derived_name.trim().is_empty() {
+        character.display_name = derived_name;
+    }
+
     let metadata_json = serde_json::to_string(&character.metadata).map_err(|e| e.to_string())?;
 
     db.execute(
