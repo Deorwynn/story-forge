@@ -70,7 +70,7 @@ const AddNameButton = ({
   <button
     onClick={onClick}
     aria-label={ariaLabel}
-    className="flex items-center gap-1 text-slate-300 hover:text-purple-400 mb-2 px-2 py-1 rounded-md transition-all animate-in fade-in zoom-in-95 outline-none focus-visible:ring-2 focus-visible:ring-purple-200"
+    className="flex items-center gap-1 text-slate-300 hover:text-purple-400 mb-2 px-2 py-1 rounded-md transition-all animate-in fade-in zoom-in-95 outline-none focus-visible:ring-2 focus-visible:ring-purple-200 cursor-pointer"
   >
     <Plus className="w-3 h-3" />
     <span className="text-[10px] font-bold uppercase tracking-widest">
