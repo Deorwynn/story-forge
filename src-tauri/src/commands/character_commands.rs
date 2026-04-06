@@ -2,7 +2,7 @@ use rusqlite::{params, Connection };
 use uuid::Uuid;
 use chrono::Utc;
 use crate::AppState;
-use crate::models::character::{Character, CharacterMetadata};
+use crate::models::character::{Character, AgeData, TemporalField, CharacterMetadata};
 
 #[tauri::command]
 pub async fn create_character(
@@ -10,15 +10,21 @@ pub async fn create_character(
     project_id: String,
     book_id: Option<String>,
     display_name: String,
-    role: String,   // Added this
-    race: String,   // Added this
-    metadata: CharacterMetadata,
+    role: String,
+    race: String,
+    mut metadata: CharacterMetadata,
 ) -> Result<Character, String> {
     let path = crate::get_db_path(&app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().timestamp();
+
+    // Initialize Age if it's missing from the call
+    if metadata.age.is_none() {
+        metadata.age = Some(TemporalField::<AgeData>::default());
+    }
+
     let metadata_json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
 
     conn.execute(
@@ -32,8 +38,8 @@ pub async fn create_character(
         project_id,
         book_id,
         display_name,
-        role, // Use the passed variable
-        race, // Use the passed variable
+        role,
+        race,
         portrait_path: None,
         is_global: true,
         last_modified: now,
@@ -122,24 +128,28 @@ pub async fn update_character(
     state: tauri::State<'_, AppState>,
     mut character: Character, 
 ) -> Result<(), String> {
-    // Lock the already-open connection
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let now = Utc::now().timestamp();
 
-    // 1. Logic Layer: Derive display_name from metadata struct fields
-    let first = &character.metadata.first_name;
-    let middle = character.metadata.middle_name.as_deref().unwrap_or("");
-    let last = character.metadata.last_name.as_deref().unwrap_or("");
+        // 1. Logic Layer: Derive display_name from metadata struct fields
+    let first = character.metadata.first_name.trim();
+    let middle = character.metadata.middle_name.as_deref().unwrap_or("").trim();
+    let last = character.metadata.last_name.as_deref().unwrap_or("").trim();
 
-    let derived_name = vec![first, middle, last]
+    let name_parts: Vec<&str> = vec![first, middle, last]
         .into_iter()
         .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
+        .collect();
 
-    // Only update if we actually have name parts in the metadata
-    if !derived_name.trim().is_empty() {
-        character.display_name = derived_name;
+    if !name_parts.is_empty() {
+        character.display_name = name_parts.join(" ");
+    }
+
+    // 2. Use the Default implementation for Age
+    // This ensures that even "legacy" data or partial updates 
+    // always result in a valid AgeData object.
+    if character.metadata.age.is_none() {
+        character.metadata.age = Some(TemporalField::<AgeData>::default());
     }
 
     let metadata_json = serde_json::to_string(&character.metadata).map_err(|e| e.to_string())?;
