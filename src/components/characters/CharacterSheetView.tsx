@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import CharacterSheetHeader from './CharacterSheetHeader';
 import CharacterSheetIdentity from './CharacterSheetIdentity';
@@ -127,44 +126,6 @@ export default function CharacterSheetView({
     dataRef.current = localData;
     masterRef.current = character;
   }, [localData, character]);
-
-  useEffect(() => {
-    let unlistenFn: any;
-
-    const init = async () => {
-      const appWindow = getCurrentWindow();
-      unlistenFn = await appWindow.listen(
-        'tauri://close-requested',
-        async () => {
-          const current = dataRef.current;
-
-          if (current) {
-            // Create a promise that rejects after 500ms so the app doesn't hang
-            const savePromise = invoke('update_character', {
-              character: current,
-            });
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Timeout')), 500)
-            );
-
-            try {
-              await Promise.race([savePromise, timeoutPromise]);
-              console.log('Pre-close save successful');
-            } catch (e) {
-              console.error('Pre-close save failed or timed out', e);
-            }
-          }
-
-          await appWindow.destroy();
-        }
-      );
-    };
-
-    init();
-    return () => {
-      if (unlistenFn) unlistenFn();
-    };
-  }, []);
 
   // Helper for metadata updates (nested objects)
   const handleMetadataUpdate = (key: string, value: any) => {

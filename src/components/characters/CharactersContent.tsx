@@ -143,7 +143,7 @@ export default function CharactersContent({
           className="ml-9 py-1.5 text-left text-[12px] text-slate-400 hover:text-purple-500 transition-colors cursor-pointer flex items-center gap-2"
         >
           <Plus className="w-3 h-3" />
-          <span>Add character...</span>
+          <span>Add character</span>
         </button>
       </div>
     );

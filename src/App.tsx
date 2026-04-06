@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { Project } from './types/project';
 import { Character } from './types/character';
@@ -19,6 +20,7 @@ function App() {
   const [documents, setDocuments] = useState<ManuscriptDoc[]>([]);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const characterRef = useRef(character);
 
   // Hydrate Project State
   const [activeProject, setActiveProject] = useState<Project | null>(() => {
@@ -91,6 +93,50 @@ function App() {
       );
     }
   }, [activeProject, isInitialLoad]);
+
+  useEffect(() => {
+    characterRef.current = character;
+  }, [character]);
+
+  // Update the Close Handler
+  useEffect(() => {
+    let unlisten: any;
+
+    async function setupCloseHandler() {
+      const appWindow = getCurrentWindow();
+      unlisten = await appWindow.listen('tauri://close-requested', async () => {
+        const currentCharacter = characterRef.current;
+
+        // If a character is active, try an emergency save
+        if (currentCharacter?.id) {
+          try {
+            // We use a timeout to ensure the app doesn't hang if the DB is busy
+            const savePromise = invoke('update_character', {
+              id: currentCharacter.id,
+              character: currentCharacter,
+            });
+
+            const timeout = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Timeout')), 500)
+            );
+
+            await Promise.race([savePromise, timeout]);
+            console.log('Final save successful');
+          } catch (err) {
+            console.warn('Final save failed or timed out', err);
+          }
+        }
+
+        // NO MATTER WHAT, destroy the window so the app actually closes
+        await appWindow.destroy();
+      });
+    }
+
+    setupCloseHandler();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   useEffect(() => {
     const syncProjectWithDb = async () => {
