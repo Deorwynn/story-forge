@@ -4,6 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import CharacterSheetHeader from './CharacterSheetHeader';
 import CharacterSheetIdentity from './CharacterSheetIdentity';
+import CharacterSheetDangerZone from './CharacterSheetDangerZone';
 import { Character } from '../../types/character';
 
 export default function CharacterSheetView({
@@ -202,6 +203,16 @@ export default function CharacterSheetView({
     );
   }
 
+  const handleDeleted = () => {
+    // 1. You might want to refresh the global list
+    // refreshCharacters();
+
+    // 2. Redirect to a blank state or the dashboard
+    // If you're using a router or state-based view, trigger that here.
+    // For now, we can just force a reload or clear the view
+    window.location.reload();
+  };
+
   if (!localData) return null;
 
   return (
@@ -233,6 +244,12 @@ export default function CharacterSheetView({
         <CharacterSheetIdentity
           character={localData}
           onUpdate={handleMetadataUpdate}
+        />
+
+        <CharacterSheetDangerZone
+          characterId={characterId}
+          characterName={localData.display_name}
+          onDeleted={handleDeleted}
         />
       </div>
       {/* Next sections go here: Physical, Backstory, etc. */}
