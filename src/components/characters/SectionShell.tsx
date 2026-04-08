@@ -54,7 +54,7 @@ export default function SectionShell({
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
         className={`
-          cursor-pointer w-full flex items-center justify-between p-5 bg-white ${theme.hover} transition-colors z-10 relative
+          cursor-pointer w-full flex items-center justify-between px-5 py-3 bg-white ${theme.hover} transition-colors z-10 relative
           outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-inset
           `}
       >
@@ -88,7 +88,7 @@ export default function SectionShell({
         aria-label={title}
       >
         <div className="overflow-hidden">
-          <div className="p-6 pt-0">{children}</div>
+          <div className="p-6 pt-2">{children}</div>
         </div>
       </div>
     </div>
