@@ -1,0 +1,160 @@
+import { Edit3 } from 'lucide-react';
+import React, { useRef, useEffect, memo } from 'react';
+
+interface SmartFieldProps {
+  label: string;
+  value: string | number | null | undefined;
+  id: string;
+  variant?: 'inline' | 'stacked';
+  placeholder?: string;
+  children: React.ReactNode;
+  isEditing: boolean;
+  onStartEdit: (id: string) => void;
+  onStopEdit: () => void;
+  sectionRef: React.RefObject<HTMLDivElement | null>;
+}
+
+const SmartField = memo(
+  ({
+    label,
+    value,
+    id,
+    variant = 'stacked',
+    placeholder,
+    children,
+    isEditing,
+    onStartEdit,
+    onStopEdit,
+    sectionRef,
+  }: SmartFieldProps) => {
+    const fieldRef = useRef<HTMLDivElement>(null);
+    const labelId = `label-${id}`;
+
+    // Auto-focus logic
+    useEffect(() => {
+      if (isEditing) {
+        const input = fieldRef.current?.querySelector(
+          'input, textarea'
+        ) as HTMLElement;
+        if (input) {
+          // Automatically link the child input to our label if it doesn't have one
+          if (!input.hasAttribute('aria-labelledby')) {
+            input.setAttribute('aria-labelledby', labelId);
+          }
+          if (document.activeElement !== input) {
+            input.focus();
+          }
+        }
+      }
+    }, [isEditing, labelId]);
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+      if ((e.key === 'Enter' || e.key === ' ') && !isEditing) {
+        e.preventDefault();
+        onStartEdit(id);
+      } else if (e.key === 'Enter' && isEditing) {
+        // Don't trigger if it's a textarea unless Shift is held
+        if ((e.target as HTMLElement).tagName !== 'TEXTAREA') {
+          onStopEdit();
+          requestAnimationFrame(() => {
+            (
+              fieldRef.current?.querySelector('[role="button"]') as HTMLElement
+            )?.focus();
+          });
+        }
+      }
+
+      // Keyboard Navigation between fields
+      if (!isEditing) {
+        const fields = Array.from(
+          sectionRef.current?.querySelectorAll('[role="button"]') || []
+        ) as HTMLElement[];
+        const currentBtn = fieldRef.current?.querySelector(
+          '[role="button"]'
+        ) as HTMLElement;
+        const currentIndex = fields.indexOf(currentBtn);
+
+        if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+          e.preventDefault();
+          fields[currentIndex + 1]?.focus();
+        } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          fields[currentIndex - 1]?.focus();
+        }
+      }
+    };
+
+    const containerClasses =
+      variant === 'inline'
+        ? 'flex flex-row items-center gap-4 py-1 group min-h-[44px]'
+        : 'flex flex-col space-y-1 min-h-[68px] group';
+
+    const labelClasses =
+      variant === 'inline'
+        ? 'text-[10px] font-bold text-slate-400 uppercase tracking-tight shrink-0 w-28'
+        : 'text-[10px] font-bold text-slate-400 uppercase tracking-tight flex justify-between pointer-events-none h-4';
+
+    return (
+      <div
+        ref={fieldRef}
+        className={containerClasses}
+        onKeyDown={handleKeyDown}
+        onBlur={(e) => {
+          if (
+            e.relatedTarget &&
+            !e.currentTarget.contains(e.relatedTarget as Node)
+          ) {
+            onStopEdit();
+          }
+        }}
+      >
+        <span id={labelId} className={labelClasses}>
+          {label}
+          {variant === 'stacked' && !isEditing && (
+            <button
+              tabIndex={-1}
+              onClick={() => onStartEdit(id)}
+              className="opacity-0 group-hover:opacity-100 transition-opacity text-purple-500 hover:text-purple-700 cursor-pointer pointer-events-auto"
+            >
+              <Edit3 className="w-3 h-3" />
+            </button>
+          )}
+        </span>
+
+        <div className="flex-1 relative h-10 flex items-center">
+          {isEditing ? (
+            <div className="w-full">{children}</div>
+          ) : (
+            <div
+              tabIndex={0}
+              onClick={() => onStartEdit(id)}
+              role="button"
+              aria-labelledby={labelId}
+              className="w-full h-full px-4 flex items-center justify-between cursor-pointer rounded-xl border border-white hover:bg-slate-50 outline-none focus:outline-none focus:ring-2 focus:ring-purple-400 focus:bg-purple-50/30 group/field"
+            >
+              <span
+                className={`text-sm font-medium pointer-events-none block truncate ${value ? 'text-slate-900' : 'text-slate-400 italic'}`}
+              >
+                {value || placeholder}
+              </span>
+
+              {/* Icon Placement for Inline Variant */}
+              {variant === 'inline' && (
+                <Edit3
+                  className="
+                    w-3.5 h-3.5 text-purple-400 shrink-0 ml-2 transition-opacity
+                    opacity-0 
+                    group-hover/field:opacity-100 
+                    group-focus/field:opacity-100
+                  "
+                />
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+);
+SmartField.displayName = 'SmartField';
+export default SmartField;
