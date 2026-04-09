@@ -21,6 +21,7 @@ export interface Character {
   portrait_path?: string | null;
   is_global: boolean;
   last_modified: number;
+  book_overrides?: Record<string, any>;
   metadata: {
     first_name: string;
     middle_name?: string;

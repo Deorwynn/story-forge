@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import SectionShell from './SectionShell';
 import SegmentedControl from '../shared/SegmentedControl';
 import SmartField from '../shared/SmartField';
+import { useWorkspace } from '../../context/WorkspaceContext';
 
 const MORTALITY_OPTIONS = [
   { value: 'mortal', label: 'Mortal' },
@@ -13,6 +14,7 @@ const MORTALITY_OPTIONS = [
 export default function IdentitySection({ character, onUpdate }: any) {
   const [editingField, setEditingField] = useState<string | null>(null);
   const sectionRef = useRef<HTMLDivElement>(null);
+  const { activeBookId } = useWorkspace();
 
   // Callbacks keep the SmartField from re-rendering unnecessarily
   const onStartEdit = useCallback((id: string) => setEditingField(id), []);
@@ -32,28 +34,62 @@ export default function IdentitySection({ character, onUpdate }: any) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onStopEdit]);
 
-  const handleAgeUpdate = (key: string, value: any) => {
-    const currentAge = character.metadata?.age || {
-      global_value: { value: null, is_unknown: true, mortality: 'mortal' },
-      book_overrides: {},
+  const getEffectiveAge = () => {
+    // Start with global as the base
+    const baseAge = character.metadata?.age?.global_value || {
+      value: null,
+      is_unknown: true,
+      mortality: 'mortal',
     };
 
-    const updatedAge = {
-      ...currentAge,
-      global_value: { ...currentAge.global_value, [key]: value },
+    // If we are in a book and an override exists for age, use that instead
+    if (
+      activeBookId &&
+      character.book_overrides?.[activeBookId]?.metadata?.age
+    ) {
+      return character.book_overrides[activeBookId].metadata.age;
+    }
+
+    return baseAge;
+  };
+
+  const effectiveAge = getEffectiveAge();
+
+  // 2. Updated Update Handler
+  const handleAgeUpdate = (key: string, value: any) => {
+    const updatedAgeValue = {
+      ...effectiveAge,
+      [key]: value,
     };
 
     if (key === 'is_unknown' && value === true) {
-      updatedAge.global_value.value = null;
+      updatedAgeValue.value = null;
     }
 
-    onUpdate('age', updatedAge);
+    // Pass the cleaned object to the parent
+    onUpdate('age', updatedAgeValue);
   };
 
-  const globalAge = character.metadata?.age?.global_value || {
-    value: null,
-    is_unknown: true,
-    mortality: 'mortal',
+  const getEffectiveValue = (path: string) => {
+    if (activeBookId && character.book_overrides?.[activeBookId]) {
+      const override = character.book_overrides[activeBookId];
+
+      if (
+        override.metadata?.[path] !== undefined &&
+        override.metadata?.[path] !== ''
+      ) {
+        return override.metadata[path];
+      }
+    }
+    if (
+      character.metadata?.[path] !== undefined &&
+      character.metadata?.[path] !== ''
+    ) {
+      return character.metadata[path];
+    }
+
+    // Root level
+    return character[path] || '';
   };
 
   return (
@@ -84,7 +120,7 @@ export default function IdentitySection({ character, onUpdate }: any) {
           </label>
           <SegmentedControl
             options={MORTALITY_OPTIONS}
-            activeValue={globalAge.mortality}
+            activeValue={effectiveAge.mortality}
             onChange={(val) => handleAgeUpdate('mortality', val)}
             aria-labelledby="label-existence-type"
           />
@@ -101,18 +137,18 @@ export default function IdentitySection({ character, onUpdate }: any) {
           onStartEdit={onStartEdit}
           onStopEdit={onStopEdit}
           value={
-            globalAge.is_unknown
+            effectiveAge.is_unknown
               ? 'Age Unknown'
-              : globalAge.value
-                ? `${globalAge.value} years old`
-                : null
+              : effectiveAge.value
+                ? `${effectiveAge.value} years old`
+                : 'No age set'
           }
         >
           <div className="flex items-center gap-3">
             <input
               type="number"
-              value={globalAge.value ?? ''}
-              disabled={globalAge.is_unknown}
+              value={effectiveAge.value ?? ''}
+              disabled={effectiveAge.is_unknown}
               onChange={(e) =>
                 handleAgeUpdate('value', parseInt(e.target.value) || null)
               }
@@ -122,7 +158,7 @@ export default function IdentitySection({ character, onUpdate }: any) {
               <input
                 type="checkbox"
                 aria-label="Mark age as unknown"
-                checked={globalAge.is_unknown}
+                checked={effectiveAge.is_unknown}
                 onChange={(e) =>
                   handleAgeUpdate('is_unknown', e.target.checked)
                 }
@@ -144,11 +180,11 @@ export default function IdentitySection({ character, onUpdate }: any) {
           isEditing={editingField === 'occupation'}
           onStartEdit={onStartEdit}
           onStopEdit={onStopEdit}
-          value={character.occupation}
+          value={getEffectiveValue('occupation')}
         >
           <input
             type="text"
-            value={character.occupation || ''}
+            value={getEffectiveValue('occupation')}
             onChange={(e) => onUpdate('occupation', e.target.value)}
             className="w-full bg-white border border-purple-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-400"
           />
@@ -163,11 +199,11 @@ export default function IdentitySection({ character, onUpdate }: any) {
           isEditing={editingField === 'race'}
           onStartEdit={onStartEdit}
           onStopEdit={onStopEdit}
-          value={character.race}
+          value={getEffectiveValue('race')}
         >
           <input
             type="text"
-            value={character.race || ''}
+            value={getEffectiveValue('race')}
             onChange={(e) => onUpdate('race', e.target.value)}
             className="w-full bg-white border border-purple-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-400"
           />
@@ -182,11 +218,11 @@ export default function IdentitySection({ character, onUpdate }: any) {
           isEditing={editingField === 'gender'}
           onStartEdit={onStartEdit}
           onStopEdit={onStopEdit}
-          value={character.metadata?.gender}
+          value={getEffectiveValue('gender')}
         >
           <input
             type="text"
-            value={character.metadata?.gender || ''}
+            value={getEffectiveValue('gender')}
             onChange={(e) => onUpdate('gender', e.target.value)}
             className="w-full bg-white border border-purple-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-400"
           />

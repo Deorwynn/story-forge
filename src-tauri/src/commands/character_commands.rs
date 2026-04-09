@@ -26,11 +26,12 @@ pub async fn create_character(
     }
 
     let metadata_json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
+    let overrides_json: Option<String> = None;
 
     conn.execute(
-        "INSERT INTO characters (id, project_id, book_id, display_name, role, race, metadata, last_modified)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        params![id, project_id, book_id, display_name, role, race, metadata_json, now],
+        "INSERT INTO characters (id, project_id, book_id, display_name, role, race, metadata, last_modified, book_overrides)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![id, project_id, book_id, display_name, role, race, metadata_json, now, overrides_json],
     ).map_err(|e| e.to_string())?;
 
     Ok(Character {
@@ -44,6 +45,7 @@ pub async fn create_character(
         is_global: true,
         last_modified: now,
         metadata,
+        book_overrides: None,
     })
 }
 
@@ -56,16 +58,20 @@ pub async fn get_characters(
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare("SELECT id, project_id, book_id, display_name, role, race, portrait_path, is_global, last_modified, metadata 
+        .prepare("SELECT id, project_id, book_id, display_name, role, race, portrait_path, is_global, last_modified, metadata, book_overrides 
                   FROM characters WHERE project_id = ?1")
         .map_err(|e| e.to_string())?;
 
     let character_iter = stmt.query_map(params![project_id], |row| {
     let metadata_str: String = row.get(9)?;
+    let overrides_str: Option<String> = row.get(10)?;
     
     // Parse without the '?' here to avoid the type mismatch
     let metadata: CharacterMetadata = serde_json::from_str(&metadata_str)
         .unwrap_or_else(|_| CharacterMetadata::default());
+
+    let book_overrides: Option<serde_json::Value> = overrides_str
+        .and_then(|s| serde_json::from_str(&s).ok());
 
         Ok(Character {
             id: row.get(0)?,
@@ -78,6 +84,7 @@ pub async fn get_characters(
             is_global: row.get(7)?,
             last_modified: row.get(8)?,
             metadata,
+            book_overrides,
         })
     }).map_err(|e| e.to_string())?;
 
@@ -97,7 +104,7 @@ pub async fn get_character(
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare("SELECT id, project_id, book_id, display_name, role, race, portrait_path, is_global, last_modified, metadata 
+        .prepare("SELECT id, project_id, book_id, display_name, role, race, portrait_path, is_global, last_modified, metadata, book_overrides 
                   FROM characters WHERE id = ?1")
         .map_err(|e| e.to_string())?;
 
@@ -105,6 +112,10 @@ pub async fn get_character(
         let metadata_str: String = row.get(9)?;
         let metadata: CharacterMetadata = serde_json::from_str(&metadata_str)
             .unwrap_or_else(|_| CharacterMetadata::default());
+        let overrides_str: Option<String> = row.get(10)?;
+
+        let book_overrides: Option<serde_json::Value> = overrides_str
+        .and_then(|s| serde_json::from_str(&s).ok());
 
         Ok(Character {
             id: row.get(0)?,
@@ -117,6 +128,7 @@ pub async fn get_character(
             is_global: row.get(7)?,
             last_modified: row.get(8)?,
             metadata,
+            book_overrides,
         })
     }).map_err(|e| e.to_string())?;
 
@@ -153,6 +165,7 @@ pub async fn update_character(
     }
 
     let metadata_json = serde_json::to_string(&character.metadata).map_err(|e| e.to_string())?;
+    let overrides_json = serde_json::to_string(&character.book_overrides).map_err(|e| e.to_string())?;
 
     db.execute(
         "UPDATE characters SET 
@@ -163,8 +176,9 @@ pub async fn update_character(
             is_global = ?5, 
             metadata = ?6, 
             last_modified = ?7,
-            book_id = ?8
-         WHERE id = ?9",
+            book_id = ?8,
+            book_overrides = ?9
+            WHERE id = ?10",
         params![
             character.display_name,
             character.role,
@@ -174,6 +188,7 @@ pub async fn update_character(
             metadata_json,
             now,
             character.book_id,
+            overrides_json,
             character.id
         ],
     ).map_err(|e| e.to_string())?;

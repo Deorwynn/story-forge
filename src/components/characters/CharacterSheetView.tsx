@@ -24,6 +24,8 @@ export default function CharacterSheetView({
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const displayDataRef = useRef<any>(null);
 
+  const { activeBookId } = useWorkspace();
+
   // 1. Fetch character data on mount or ID change
   useEffect(() => {
     let isMounted = true;
@@ -45,6 +47,7 @@ export default function CharacterSheetView({
               name: data.display_name,
               metadata: data.metadata,
               role: data.role,
+              book_overrides: data.book_overrides,
             })
           );
           setIsLoading(false);
@@ -81,6 +84,7 @@ export default function CharacterSheetView({
 
         // 2. Update Local "Master" (to stop the Dirty check)
         setCharacter(dataToSave);
+        setLocalData(dataToSave);
 
         console.log('✅ Save successful');
       } catch (err) {
@@ -97,12 +101,13 @@ export default function CharacterSheetView({
 
   // 3. Save on localData changes with debounce, and also on unmount/character switch if dirty
   useEffect(() => {
-    if (!localData) return;
+    if (!localData || isLoading) return;
 
     const currentSnapshot = JSON.stringify({
       name: localData.display_name,
       metadata: localData.metadata,
       role: localData.role,
+      book_overrides: localData.book_overrides,
     });
 
     // If the current text matches what we last saved, do nothing
@@ -115,12 +120,14 @@ export default function CharacterSheetView({
 
     return () => {
       clearTimeout(timer);
-      // EMERGENCY CLEANUP: If we switch characters or unmount while "dirty"
       if (currentSnapshot !== lastSavedData) {
-        invoke('update_character', { character: localData }).catch(() => {});
+        invoke('update_character', {
+          id: localData.id,
+          character: localData,
+        }).catch(() => {});
       }
     };
-  }, [localData, lastSavedData, saveToBackend]);
+  }, [localData, lastSavedData, saveToBackend, activeBookId]);
 
   useEffect(() => {
     dataRef.current = localData;
@@ -129,10 +136,30 @@ export default function CharacterSheetView({
 
   // Helper for metadata updates (nested objects)
   const handleMetadataUpdate = (key: string, value: any) => {
-    setLocalData((prev: any) => ({
-      ...prev,
-      metadata: { ...prev.metadata, [key]: value },
-    }));
+    setLocalData((prev: any) => {
+      if (!prev) return prev;
+      const updated = { ...prev };
+
+      if (activeBookId) {
+        const allOverrides = { ...(updated.book_overrides || {}) };
+        const specificBookData = { ...(allOverrides[activeBookId] || {}) };
+
+        specificBookData.metadata = {
+          ...(specificBookData.metadata || {}),
+          [key]: value, // This will now correctly save the age object here
+        };
+
+        allOverrides[activeBookId] = specificBookData;
+        updated.book_overrides = allOverrides;
+      } else {
+        updated.metadata = {
+          ...(updated.metadata || {}),
+          [key]: value,
+        };
+      }
+
+      return updated;
+    });
   };
 
   const handleNamePartUpdate = (

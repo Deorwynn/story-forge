@@ -20,6 +20,7 @@ function App() {
   const [documents, setDocuments] = useState<ManuscriptDoc[]>([]);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [activeBookId, setActiveBookId] = useState<string | null>(null);
   const characterRef = useRef(character);
 
   // Hydrate Project State
@@ -355,6 +356,8 @@ function App() {
   const handleBookSwitch = async (book: any) => {
     if (!activeProject) return;
 
+    setActiveBookId(book.id);
+
     // Block the Save effect from firing during the switch
     setIsInitialLoad(true);
 
@@ -416,24 +419,35 @@ function App() {
           status,
           documents,
           isLoadingDocs,
-          updateCharacter: (updates: string | Partial<Character> | null) => {
-            if (updates === null) {
-              setCharacter(null);
+          activeBookId,
+          setActiveBookId,
+          updateCharacter: (fieldOrObject: string | any, value?: any) => {
+            // GUARD: If we received an object (the whole character), just set it and exit
+            if (typeof fieldOrObject !== 'string') {
+              console.log('Full character sync received');
+              setCharacter(fieldOrObject);
               return;
             }
 
-            if (typeof updates === 'string') {
-              if (character) {
-                setCharacter({ ...character, display_name: updates });
+            // Otherwise, proceed with the path-based update
+            const path = fieldOrObject;
+            console.log('Path-based update received:', path, value);
+
+            setCharacter((prev) => {
+              if (!prev) return prev;
+              const newChar = { ...prev };
+
+              if (path.startsWith('metadata.')) {
+                const subKey = path.split('.')[1];
+                newChar.metadata = {
+                  ...(newChar.metadata || {}),
+                  [subKey]: value,
+                };
+              } else {
+                (newChar as any)[path] = value;
               }
-            } else {
-              setCharacter((prev) => {
-                // If we are setting a whole new character object (it has an 'id')
-                // replace the state entirely instead of merging.
-                if (!prev || (updates as any).id) return updates as Character;
-                return { ...prev, ...updates };
-              });
-            }
+              return newChar;
+            });
           },
           refreshDocuments: fetchDocs,
         }}
