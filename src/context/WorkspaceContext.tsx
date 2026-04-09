@@ -9,7 +9,12 @@ interface WorkspaceContextType {
   status: string;
   documents: ManuscriptDoc[];
   isLoadingDocs: boolean;
-  updateCharacter: (updates: Partial<Character> | string) => void;
+  activeBookId: string | null;
+  setActiveBookId: (id: string | null) => void;
+  updateCharacter: (
+    updates: Partial<Character> | string | any,
+    value?: any
+  ) => void;
   refreshDocuments: () => Promise<void>;
 }
 

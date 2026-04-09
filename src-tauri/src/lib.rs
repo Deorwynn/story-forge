@@ -135,6 +135,7 @@ fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
             is_global BOOLEAN DEFAULT 1,
             metadata TEXT NOT NULL, -- This stores our CharacterMetadata JSON
             last_modified INTEGER NOT NULL,
+            book_overrides TEXT, -- New column to store book-specific overrides as JSON
             FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
             FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE SET NULL
         );

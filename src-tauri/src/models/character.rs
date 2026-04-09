@@ -13,6 +13,7 @@ pub struct Character {
     pub is_global: bool,
     pub last_modified: i64,
     pub metadata: CharacterMetadata,
+    pub book_overrides: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
