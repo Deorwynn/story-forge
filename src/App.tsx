@@ -184,8 +184,9 @@ function App() {
           finalVolume = dbTargetVolume;
         }
 
-        // Resolve the specific Book ID to fetch the tab
-        const activeBookId = sanitizedBooks[finalVolume - 1]?.id;
+        // Calculate the ID based on the resolved volume
+        const resolvedBookId = sanitizedBooks[finalVolume - 1]?.id || null;
+        setActiveBookId(resolvedBookId);
 
         // 4. HYDRATE CHARACTER
         try {
@@ -210,10 +211,10 @@ function App() {
         }
 
         // 5. HYDRATE TAB
-        if (activeBookId) {
+        if (resolvedBookId) {
           const savedTab = await invoke<string | null>('get_user_preference', {
             project_id: activeProject.id,
-            key: `active_tab_book_${activeBookId}`,
+            key: `active_tab_book_${resolvedBookId}`,
           }).catch(() => null);
 
           if (savedTab) {
