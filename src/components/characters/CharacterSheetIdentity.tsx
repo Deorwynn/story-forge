@@ -35,22 +35,20 @@ export default function IdentitySection({ character, onUpdate }: any) {
   }, [onStopEdit]);
 
   const getEffectiveAge = () => {
-    // Start with global as the base
-    const baseAge = character.metadata?.age?.global_value || {
-      value: null,
-      is_unknown: true,
-      mortality: 'mortal',
-    };
+    // Check for Book Override first
+    const bookOverride = activeBookId
+      ? character.book_overrides?.[activeBookId]?.metadata?.age
+      : null;
+    if (bookOverride) return bookOverride;
 
-    // If we are in a book and an override exists for age, use that instead
-    if (
-      activeBookId &&
-      character.book_overrides?.[activeBookId]?.metadata?.age
-    ) {
-      return character.book_overrides[activeBookId].metadata.age;
-    }
-
-    return baseAge;
+    // Fallback to Global
+    return (
+      character.metadata?.age?.global_value || {
+        value: null,
+        is_unknown: true,
+        mortality: 'mortal',
+      }
+    );
   };
 
   const effectiveAge = getEffectiveAge();
@@ -71,24 +69,22 @@ export default function IdentitySection({ character, onUpdate }: any) {
   };
 
   const getEffectiveValue = (path: string) => {
+    // Check Book Overrides
     if (activeBookId && character.book_overrides?.[activeBookId]) {
-      const override = character.book_overrides[activeBookId];
-
-      if (
-        override.metadata?.[path] !== undefined &&
-        override.metadata?.[path] !== ''
-      ) {
-        return override.metadata[path];
-      }
+      const val = character.book_overrides[activeBookId].metadata?.[path];
+      // Check if the key exists at all in the override
+      if (val !== undefined && val !== null) return val;
     }
+
+    // Fallback to Global Metadata
     if (
       character.metadata?.[path] !== undefined &&
-      character.metadata?.[path] !== ''
+      character.metadata?.[path] !== null
     ) {
       return character.metadata[path];
     }
 
-    // Root level
+    // Fallback to root character object
     return character[path] || '';
   };
 

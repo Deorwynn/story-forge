@@ -49,4 +49,5 @@ pub struct CharacterMetadata {
     pub gender: Option<String>,
     pub age: Option<TemporalField<AgeData>>, 
     pub languages: Vec<String>,
+    pub occupation: Option<String>,
 }
