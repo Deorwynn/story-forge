@@ -11,7 +11,7 @@ export default function CharacterSheetView({
 }: {
   characterId: string;
 }) {
-  const { updateCharacter } = useWorkspace();
+  const { activeBookId, project, updateCharacter } = useWorkspace();
   const [character, setCharacter] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showSavingText, setShowSavingText] = useState(false);
@@ -23,8 +23,6 @@ export default function CharacterSheetView({
   const masterRef = useRef(character);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const displayDataRef = useRef<any>(null);
-
-  const { activeBookId } = useWorkspace();
 
   // 1. Fetch character data on mount or ID change
   useEffect(() => {
@@ -140,22 +138,42 @@ export default function CharacterSheetView({
       if (!prev) return prev;
       const updated = { ...prev };
 
-      if (activeBookId) {
+      // Identify if we are in the "Master" book
+      const isMasterBook = project?.books?.[0]?.id === activeBookId;
+
+      if (activeBookId && !isMasterBook) {
+        // --- BOOK OVERRIDE LOGIC ---
         const allOverrides = { ...(updated.book_overrides || {}) };
         const specificBookData = { ...(allOverrides[activeBookId] || {}) };
 
         specificBookData.metadata = {
           ...(specificBookData.metadata || {}),
-          [key]: value, // This will now correctly save the age object here
+          [key]: value,
         };
 
         allOverrides[activeBookId] = specificBookData;
         updated.book_overrides = allOverrides;
       } else {
-        updated.metadata = {
+        // --- GLOBAL VALUE LOGIC ---
+        // If we are in the master book OR no book is active, update the Series Bible
+        const newMetadata = {
           ...(updated.metadata || {}),
           [key]: value,
         };
+
+        // Special handling for Age: because it has a nested 'global_value'
+        if (key === 'age') {
+          newMetadata.age = {
+            ...(updated.metadata?.age || {}),
+            global_value: value, // value here is the {value, mortality, is_unknown} object
+          };
+        }
+
+        updated.metadata = newMetadata;
+
+        // Sync root fields for the sidebar (Race/Gender etc)
+        if (key === 'race') updated.race = value;
+        if (key === 'gender') updated.gender = value;
       }
 
       return updated;
@@ -202,6 +220,9 @@ export default function CharacterSheetView({
   };
 
   if (!localData) return null;
+
+  console.log('activeBookId: ', activeBookId);
+  console.log(localData);
 
   return (
     <div className="max-w-4xl mx-auto py-12 px-6 relative">
