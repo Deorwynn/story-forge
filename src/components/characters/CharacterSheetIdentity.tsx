@@ -14,7 +14,7 @@ const MORTALITY_OPTIONS = [
 export default function IdentitySection({ character, onUpdate }: any) {
   const [editingField, setEditingField] = useState<string | null>(null);
   const sectionRef = useRef<HTMLDivElement>(null);
-  const { activeBookId } = useWorkspace();
+  const { activeBookId, project } = useWorkspace();
 
   // Callbacks keep the SmartField from re-rendering unnecessarily
   const onStartEdit = useCallback((id: string) => setEditingField(id), []);
@@ -35,11 +35,29 @@ export default function IdentitySection({ character, onUpdate }: any) {
   }, [onStopEdit]);
 
   const getEffectiveAge = () => {
-    // Check for Book Override first
-    const bookOverride = activeBookId
-      ? character.book_overrides?.[activeBookId]?.metadata?.age
-      : null;
-    if (bookOverride) return bookOverride;
+    if (!activeBookId || !project?.books) {
+      return (
+        character.metadata?.age?.global_value || {
+          value: null,
+          is_unknown: true,
+          mortality: 'mortal',
+        }
+      );
+    }
+
+    const books = project.books;
+    const currentBookIndex = books.findIndex((b) => b.id === activeBookId);
+
+    // Walk backwards to find the nearest age override
+    for (let i = currentBookIndex; i >= 0; i--) {
+      const bookId = books[i].id;
+      const ageOverride = character.book_overrides?.[bookId]?.metadata?.age;
+
+      // If this book has an age object, use it
+      if (ageOverride) {
+        return ageOverride;
+      }
+    }
 
     // Fallback to Global
     return (
@@ -53,7 +71,7 @@ export default function IdentitySection({ character, onUpdate }: any) {
 
   const effectiveAge = getEffectiveAge();
 
-  // 2. Updated Update Handler
+  // Updated Update Handler
   const handleAgeUpdate = (key: string, value: any) => {
     const updatedAgeValue = {
       ...effectiveAge,
@@ -69,22 +87,31 @@ export default function IdentitySection({ character, onUpdate }: any) {
   };
 
   const getEffectiveValue = (path: string) => {
-    // Check Book Overrides
-    if (activeBookId && character.book_overrides?.[activeBookId]) {
-      const val = character.book_overrides[activeBookId].metadata?.[path];
-      // Check if the key exists at all in the override
-      if (val !== undefined && val !== null) return val;
+    if (!activeBookId || !project?.books)
+      return character.metadata?.[path] || '';
+
+    // Get the list of books in order
+    const books = project.books;
+    const currentBookIndex = books.findIndex((b) => b.id === activeBookId);
+
+    // Look at the current book and then walk BACKWARDS through previous books
+    // to find the most recent override.
+    for (let i = currentBookIndex; i >= 0; i--) {
+      const bookId = books[i].id;
+      const override = character.book_overrides?.[bookId]?.metadata?.[path];
+
+      if (override !== undefined && override !== null) {
+        return override;
+      }
     }
 
-    // Fallback to Global Metadata
-    if (
-      character.metadata?.[path] !== undefined &&
-      character.metadata?.[path] !== null
-    ) {
-      return character.metadata[path];
+    // If no overrides exist in the current or any previous book, fallback to Global Metadata
+    const globalMeta = character.metadata?.[path];
+    if (globalMeta !== undefined && globalMeta !== null && globalMeta !== '') {
+      return globalMeta;
     }
 
-    // Fallback to root character object
+    // Final Fallback to root level
     return character[path] || '';
   };
 
