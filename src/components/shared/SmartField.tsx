@@ -45,17 +45,25 @@ const SmartField = memo(
                 onReset?.();
               }}
               title="Value overridden. Click to revert to inherited value."
-              className="p-1 rounded-md hover:bg-purple-100 text-purple-600 transition-colors group/reset"
+              className="
+              p-1 rounded-md 
+              hover:bg-purple-100 text-purple-600 
+              transition-colors group/reset 
+              cursor-pointer
+              outline-none focus:ring-2 focus:ring-purple-400 focus:bg-purple-50"
             >
               <Link2Off className="w-3.5 h-3.5" />
-              <RotateCcw className="w-3 h-3 absolute -top-1 -right-1 opacity-0 group-hover/reset:opacity-100 bg-white rounded-full shadow-sm transition-opacity" />
+              <RotateCcw
+                aria-hidden="true"
+                className="w-3 h-3 absolute -top-1 -right-1 opacity-0 group-hover/reset:opacity-100 group-focus:opacity-100 bg-white rounded-full shadow-sm transition-opacity"
+              />
             </button>
           ) : inheritanceSource ? (
             <div
               title={`Inherited from ${inheritanceSource === 'global' ? 'Series Bible' : `Book ${inheritanceSource}`}`}
               className="flex items-center gap-0.5 text-slate-300 group-hover:text-purple-400 transition-colors"
             >
-              <Link2 className="w-3.5 h-3.5" />
+              <Link2 aria-hidden="true" className="w-3.5 h-3.5" />
               <span className="text-[9px] font-bold">
                 {inheritanceSource === 'global' ? 'G' : inheritanceSource}
               </span>
@@ -155,7 +163,7 @@ const SmartField = memo(
                 onClick={() => onStartEdit(id)}
                 className="opacity-0 group-hover:opacity-100 transition-opacity text-purple-500 hover:text-purple-700 cursor-pointer pointer-events-auto"
               >
-                <Edit3 className="w-3 h-3" />
+                <Edit3 aria-hidden="true" className="w-3 h-3" />
               </button>
             </div>
           )}
@@ -184,6 +192,7 @@ const SmartField = memo(
                 {/* Edit Icon for Inline Variant */}
                 {variant === 'inline' && (
                   <Edit3
+                    aria-hidden="true"
                     className="
                     w-3.5 h-3.5 text-purple-400 shrink-0 ml-2 transition-opacity
                     opacity-0 
