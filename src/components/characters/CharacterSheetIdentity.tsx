@@ -115,6 +115,57 @@ export default function IdentitySection({ character, onUpdate }: any) {
     return character[path] || '';
   };
 
+  const getInheritanceInfo = (path: string) => {
+    if (!activeBookId || !project?.books)
+      return { inheritanceSource: 'global' as const, isOverridden: false };
+
+    const books = project.books;
+    const currentBookIndex = books.findIndex((b) => b.id === activeBookId);
+
+    // 1. Hide icons for the first book
+    if (currentBookIndex === 0) {
+      return { inheritanceSource: null, isOverridden: false };
+    }
+
+    // 2. Check for override in the CURRENT book
+    const currentOverride =
+      character.book_overrides?.[activeBookId]?.metadata?.[path];
+    const hasCurrentOverride = !!currentOverride;
+
+    // 3. Find the source by walking backwards
+    let source: number | 'global' = 'global';
+
+    for (let i = currentBookIndex - 1; i >= 0; i--) {
+      const prevOverride =
+        character.book_overrides?.[books[i].id]?.metadata?.[path];
+
+      if (prevOverride) {
+        // For the 'age' object, we want to make sure it's an actual override
+        // and not just an empty initialized object (if your state does that)
+        if (path === 'age' && prevOverride.value === undefined) continue;
+
+        source = i + 1;
+        break;
+      }
+    }
+
+    return {
+      inheritanceSource: source,
+      isOverridden: hasCurrentOverride,
+    };
+  };
+
+  const handleResetField = (path: string) => {
+    // onUpdate(path, null) signifies "remove override"
+    onUpdate(path, undefined);
+  };
+
+  const getFieldVariant = (value: any) => {
+    const stringValue = String(value || '');
+    // If text is longer than 22 chars, stack it so it doesn't squish the label
+    return stringValue.length > 22 ? 'stacked' : 'inline';
+  };
+
   return (
     <SectionShell
       title="Core Identity"
@@ -128,11 +179,11 @@ export default function IdentitySection({ character, onUpdate }: any) {
             setEditingField(null);
           }
         }}
-        className="grid grid-cols-1 md:grid-cols-2 gap-x-18 gap-y-3"
+        className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-1"
       >
         {/* EXISTENCE TYPE */}
         <div
-          className="space-y-2 col-span-1 md:col-span-2"
+          className="space-y-2 col-span-1 lg:col-span-2"
           onMouseDown={() => setEditingField(null)}
         >
           <label
@@ -166,6 +217,8 @@ export default function IdentitySection({ character, onUpdate }: any) {
                 ? `${effectiveAge.value} years old`
                 : 'No age set'
           }
+          {...getInheritanceInfo('age')}
+          onReset={() => handleResetField('age')}
         >
           <div className="flex items-center gap-3">
             <input
@@ -197,13 +250,15 @@ export default function IdentitySection({ character, onUpdate }: any) {
         <SmartField
           label="Occupation / Role"
           id="occupation"
-          variant="inline"
+          variant={getFieldVariant(getEffectiveValue('occupation'))}
           placeholder="No occupation listed"
           sectionRef={sectionRef}
           isEditing={editingField === 'occupation'}
           onStartEdit={onStartEdit}
           onStopEdit={onStopEdit}
           value={getEffectiveValue('occupation')}
+          {...getInheritanceInfo('occupation')}
+          onReset={() => handleResetField('occupation')}
         >
           <input
             type="text"
@@ -216,13 +271,15 @@ export default function IdentitySection({ character, onUpdate }: any) {
         <SmartField
           label="Race / Species"
           id="race"
-          variant="inline"
+          variant={getFieldVariant(getEffectiveValue('race'))}
           placeholder="No race specified"
           sectionRef={sectionRef}
           isEditing={editingField === 'race'}
           onStartEdit={onStartEdit}
           onStopEdit={onStopEdit}
           value={getEffectiveValue('race')}
+          {...getInheritanceInfo('race')}
+          onReset={() => handleResetField('race')}
         >
           <input
             type="text"
@@ -235,13 +292,15 @@ export default function IdentitySection({ character, onUpdate }: any) {
         <SmartField
           label="Gender / Pronouns"
           id="gender"
-          variant="inline"
+          variant={getFieldVariant(getEffectiveValue('gender'))}
           placeholder="Not specified"
           sectionRef={sectionRef}
           isEditing={editingField === 'gender'}
           onStartEdit={onStartEdit}
           onStopEdit={onStopEdit}
           value={getEffectiveValue('gender')}
+          {...getInheritanceInfo('gender')}
+          onReset={() => handleResetField('gender')}
         >
           <input
             type="text"
