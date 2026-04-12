@@ -138,6 +138,23 @@ export default function CharacterSheetView({
       if (!prev) return prev;
       const updated = { ...prev };
 
+      // --- RECONNECT / RESET LOGIC ---
+      // If value is undefined, it's a signal to remove the override and link back
+      if (value === undefined) {
+        if (activeBookId && updated.book_overrides?.[activeBookId]?.metadata) {
+          const newOverrides = { ...updated.book_overrides };
+          const bookData = { ...newOverrides[activeBookId] };
+          const newMetadata = { ...bookData.metadata };
+
+          delete newMetadata[key];
+
+          bookData.metadata = newMetadata;
+          newOverrides[activeBookId] = bookData;
+          updated.book_overrides = newOverrides;
+        }
+        return updated;
+      }
+
       // Identify if we are in the "Master" book
       const isMasterBook = project?.books?.[0]?.id === activeBookId;
 
@@ -220,9 +237,6 @@ export default function CharacterSheetView({
   };
 
   if (!localData) return null;
-
-  console.log('activeBookId: ', activeBookId);
-  console.log(localData);
 
   return (
     <div className="max-w-4xl mx-auto py-12 px-6 relative">
