@@ -122,7 +122,6 @@ function App() {
             );
 
             await Promise.race([savePromise, timeout]);
-            console.log('Final save successful');
           } catch (err) {
             console.warn('Final save failed or timed out', err);
           }
@@ -327,6 +326,24 @@ function App() {
     }
   };
 
+  const refreshCharacters = useCallback(async (): Promise<any[]> => {
+    // If no project, return an empty array instead of undefined
+    if (!activeProject?.id) {
+      console.warn('🔍 [App] No active project ID found during refresh.');
+      return [];
+    }
+
+    try {
+      const list = await invoke<any[]>('get_characters', {
+        projectId: activeProject.id,
+      });
+      return list || []; // Ensure we don't return null/undefined if invoke fails silently
+    } catch (err) {
+      console.error('❌ [App] Refresh failed:', err);
+      return []; // Return empty array on error to satisfy TypeScript
+    }
+  }, [activeProject?.id]);
+
   const handleUpdateProject = (updated: Project) => {
     if (activeProject?.id === updated.id) {
       // If the type changed to standalone, force the volume to 1
@@ -423,16 +440,19 @@ function App() {
           activeBookId,
           setActiveBookId,
           updateCharacter: (fieldOrObject: string | any, value?: any) => {
+            if (fieldOrObject === null) {
+              setCharacter(null);
+              return;
+            }
+
             // GUARD: If we received an object (the whole character), just set it and exit
             if (typeof fieldOrObject !== 'string') {
-              console.log('Full character sync received');
               setCharacter(fieldOrObject);
               return;
             }
 
             // Otherwise, proceed with the path-based update
             const path = fieldOrObject;
-            console.log('Path-based update received:', path, value);
 
             setCharacter((prev) => {
               if (!prev) return prev;
@@ -451,6 +471,7 @@ function App() {
             });
           },
           refreshDocuments: fetchDocs,
+          refreshCharacters,
         }}
       >
         <div className="flex flex-1 overflow-hidden">

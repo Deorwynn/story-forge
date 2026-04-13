@@ -11,7 +11,8 @@ export default function CharacterSheetView({
 }: {
   characterId: string;
 }) {
-  const { activeBookId, project, updateCharacter } = useWorkspace();
+  const { activeBookId, project, updateCharacter, refreshCharacters } =
+    useWorkspace();
   const [character, setCharacter] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showSavingText, setShowSavingText] = useState(false);
@@ -226,14 +227,12 @@ export default function CharacterSheetView({
     );
   }
 
-  const handleDeleted = () => {
-    // 1. You might want to refresh the global list
-    // refreshCharacters();
+  const handleDeleted = async () => {
+    // 1. Tell the sidebar to refresh its list
+    await refreshCharacters();
 
-    // 2. Redirect to a blank state or the dashboard
-    // If you're using a router or state-based view, trigger that here.
-    // For now, we can just force a reload or clear the view
-    window.location.reload();
+    // 2. Tell App.tsx there is no longer an active character
+    updateCharacter(null);
   };
 
   if (!localData) return null;

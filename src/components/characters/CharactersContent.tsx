@@ -34,7 +34,7 @@ export default function CharactersContent({
   const roles = ['Main Characters', 'Supporting', 'Side', 'Other'];
 
   const fetchCharacters = async () => {
-    if (!projectId) return; // Guard clause
+    if (!projectId) return;
 
     try {
       const list = await invoke<any[]>('get_characters', {
@@ -56,6 +56,13 @@ export default function CharactersContent({
   useEffect(() => {
     if (globalCharacter?.id && globalCharacter.project_id === projectId) {
       setCharacters((prev) => {
+        const exists = prev.find((c) => c.id === globalCharacter.id);
+        if (!exists) {
+          // If it's a new character not in our list, we should just fetch.
+          fetchCharacters();
+          return prev;
+        }
+
         return prev.map((c) => {
           if (c.id === globalCharacter.id) {
             // Only update if something actually changed to prevent render loops
@@ -73,6 +80,12 @@ export default function CharactersContent({
           return c;
         });
       });
+    } else if (globalCharacter === null && characters.length > 0) {
+      // This catches deletions!
+      console.log(
+        '🗑️ [Sidebar] Global character became null. Refreshing list...'
+      );
+      fetchCharacters();
     }
   }, [globalCharacter, projectId]);
 
