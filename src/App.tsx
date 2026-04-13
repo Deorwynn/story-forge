@@ -285,11 +285,11 @@ function App() {
   }, [character?.id, activeProject?.id]);
 
   const handleEnterProject = async (baseProject: Project) => {
-    setCharacter(null);
+    setCharacter(null); // Clear previous project's character
     setIsInitialLoad(true); // Show the curtain immediately
 
     try {
-      // Ask the DB: "Where did we leave off?"
+      // Get the last active book for this project from the DB
       const savedBookId = await invoke<string>('get_last_active_book', {
         project_id: baseProject.id,
       }).catch(() => null);
@@ -322,6 +322,25 @@ function App() {
       const finalName = isStandalone
         ? baseProject.name || sanitizedBooks[0]?.title
         : sanitizedBooks[targetVolume - 1]?.title || baseProject.name;
+
+      try {
+        const lastCharId = await invoke<string | null>('get_user_preference', {
+          project_id: baseProject.id,
+          key: 'last_active_character',
+        }).catch(() => null);
+
+        if (lastCharId) {
+          const fullChar = await invoke<any>('get_character', {
+            id: lastCharId,
+          });
+          // Double check the character belongs to this project
+          if (fullChar && fullChar.project_id === baseProject.id) {
+            setCharacter(fullChar);
+          }
+        }
+      } catch (charErr) {
+        console.log('No character preference found for this project.');
+      }
 
       setActiveProject({
         ...baseProject,
