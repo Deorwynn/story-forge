@@ -16,6 +16,7 @@ interface WorkspaceContextType {
     value?: any
   ) => void;
   refreshDocuments: () => Promise<void>;
+  refreshCharacters: () => Promise<any[]>;
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextType | undefined>(
