@@ -54,14 +54,6 @@ export default function Sidebar({ activeTab }: SidebarProps) {
             onSelectCharacter={async (id) => {
               const fullChar = await invoke('get_character', { id });
               updateCharacter(fullChar as any);
-
-              if (project?.id) {
-                await invoke('set_user_preference', {
-                  project_id: project.id,
-                  key: 'last_active_character',
-                  value: id,
-                });
-              }
             }}
           />
         )}

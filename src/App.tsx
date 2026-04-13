@@ -273,6 +273,17 @@ function App() {
     }
   }, [currentBookId, fetchDocs]);
 
+  // Persist "Last Active Character" whenever the character ID changes
+  useEffect(() => {
+    if (activeProject?.id && character?.id) {
+      invoke('set_user_preference', {
+        project_id: activeProject.id,
+        key: 'last_active_character',
+        value: character.id,
+      }).catch((err) => console.error('Failed to save character pref:', err));
+    }
+  }, [character?.id, activeProject?.id]);
+
   const handleEnterProject = async (baseProject: Project) => {
     setCharacter(null);
     setIsInitialLoad(true); // Show the curtain immediately
