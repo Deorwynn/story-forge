@@ -157,7 +157,9 @@ export default function CharacterSheetView({
       }
 
       // Identify if we are in the "Master" book
-      const isMasterBook = project?.books?.[0]?.id === activeBookId;
+      const isMasterBook =
+        project?.type === 'standalone' ||
+        project?.books?.[0]?.id === activeBookId;
 
       if (activeBookId && !isMasterBook) {
         // --- BOOK OVERRIDE LOGIC ---
@@ -235,6 +237,9 @@ export default function CharacterSheetView({
     updateCharacter(null);
   };
 
+  const hideInheritance =
+    project?.type === 'standalone' || project?.books?.[0]?.id === activeBookId;
+
   if (!localData) return null;
 
   return (
@@ -266,6 +271,7 @@ export default function CharacterSheetView({
         <CharacterSheetIdentity
           character={localData}
           onUpdate={handleMetadataUpdate}
+          isMasterBook={hideInheritance}
         />
 
         <CharacterSheetDangerZone

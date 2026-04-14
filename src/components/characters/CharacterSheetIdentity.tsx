@@ -11,7 +11,11 @@ const MORTALITY_OPTIONS = [
   { value: 'immortal', label: 'Immortal' },
 ];
 
-export default function IdentitySection({ character, onUpdate }: any) {
+export default function IdentitySection({
+  character,
+  onUpdate,
+  isMasterBook,
+}: any) {
   const [editingField, setEditingField] = useState<string | null>(null);
   const sectionRef = useRef<HTMLDivElement>(null);
   const { activeBookId, project } = useWorkspace();
@@ -219,6 +223,7 @@ export default function IdentitySection({ character, onUpdate }: any) {
           }
           {...getInheritanceInfo('age')}
           onReset={() => handleResetField('age')}
+          isMasterBook={isMasterBook}
         >
           <div className="flex items-center gap-3">
             <input
@@ -259,6 +264,7 @@ export default function IdentitySection({ character, onUpdate }: any) {
           value={getEffectiveValue('occupation')}
           {...getInheritanceInfo('occupation')}
           onReset={() => handleResetField('occupation')}
+          isMasterBook={isMasterBook}
         >
           <input
             type="text"
@@ -280,6 +286,7 @@ export default function IdentitySection({ character, onUpdate }: any) {
           value={getEffectiveValue('race')}
           {...getInheritanceInfo('race')}
           onReset={() => handleResetField('race')}
+          isMasterBook={isMasterBook}
         >
           <input
             type="text"
@@ -301,6 +308,7 @@ export default function IdentitySection({ character, onUpdate }: any) {
           value={getEffectiveValue('gender')}
           {...getInheritanceInfo('gender')}
           onReset={() => handleResetField('gender')}
+          isMasterBook={isMasterBook}
         >
           <input
             type="text"
