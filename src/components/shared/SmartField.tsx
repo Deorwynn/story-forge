@@ -15,6 +15,7 @@ interface SmartFieldProps {
   inheritanceSource?: number | 'global' | null;
   isOverridden?: boolean;
   onReset?: () => void;
+  isMasterBook?: boolean;
 }
 
 const SmartField = memo(
@@ -32,9 +33,10 @@ const SmartField = memo(
     inheritanceSource = 'global',
     isOverridden,
     onReset,
+    isMasterBook = false,
   }: SmartFieldProps) => {
     const renderInheritanceIcon = () => {
-      if (isEditing) return null;
+      if (isEditing || isMasterBook) return null;
 
       return (
         <div className="flex items-center gap-1.5 ml-2 shrink-0">
