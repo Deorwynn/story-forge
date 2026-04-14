@@ -1,4 +1,4 @@
-import { Fingerprint } from 'lucide-react';
+import { Fingerprint, Link2, Link2Off, RotateCcw } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import SectionShell from './SectionShell';
 import SegmentedControl from '../shared/SegmentedControl';
@@ -75,6 +75,25 @@ export default function IdentitySection({
 
   const effectiveAge = getEffectiveAge();
 
+  const getEffectiveMortality = () => {
+    if (!activeBookId || !project?.books) {
+      return character.metadata?.age?.global_value?.mortality || 'mortal';
+    }
+
+    const books = project.books;
+    const currentBookIndex = books.findIndex((b) => b.id === activeBookId);
+
+    // Walk backwards specifically for the mortality key
+    for (let i = currentBookIndex; i >= 0; i--) {
+      const bookId = books[i].id;
+      const val = character.book_overrides?.[bookId]?.metadata?.age?.mortality;
+      if (val !== undefined && val !== null) return val;
+    }
+
+    // Fallback to Global
+    return character.metadata?.age?.global_value?.mortality || 'mortal';
+  };
+
   // Updated Update Handler
   const handleAgeUpdate = (key: string, value: any) => {
     const updatedAgeValue = {
@@ -126,26 +145,28 @@ export default function IdentitySection({
     const books = project.books;
     const currentBookIndex = books.findIndex((b) => b.id === activeBookId);
 
-    // 1. Hide icons for the first book
-    if (currentBookIndex === 0) {
+    if (currentBookIndex === 0)
       return { inheritanceSource: null, isOverridden: false };
-    }
 
-    // 2. Check for override in the CURRENT book
+    // 1. Correctly locate the override in the CURRENT book
     const currentOverride =
-      character.book_overrides?.[activeBookId]?.metadata?.[path];
-    const hasCurrentOverride = !!currentOverride;
+      path === 'mortality'
+        ? character.book_overrides?.[activeBookId]?.metadata?.age?.mortality
+        : character.book_overrides?.[activeBookId]?.metadata?.[path];
 
-    // 3. Find the source by walking backwards
+    const hasCurrentOverride = currentOverride !== undefined;
+
+    // 2. Find the source by walking backwards
     let source: number | 'global' = 'global';
 
     for (let i = currentBookIndex - 1; i >= 0; i--) {
       const prevOverride =
-        character.book_overrides?.[books[i].id]?.metadata?.[path];
+        path === 'mortality'
+          ? character.book_overrides?.[books[i].id]?.metadata?.age?.mortality
+          : character.book_overrides?.[books[i].id]?.metadata?.[path];
 
-      if (prevOverride) {
-        // For the 'age' object, we want to make sure it's an actual override
-        // and not just an empty initialized object (if your state does that)
+      if (prevOverride !== undefined && prevOverride !== null) {
+        // Special check for age object to ensure it's not just an empty shell
         if (path === 'age' && prevOverride.value === undefined) continue;
 
         source = i + 1;
@@ -160,8 +181,17 @@ export default function IdentitySection({
   };
 
   const handleResetField = (path: string) => {
-    // onUpdate(path, null) signifies "remove override"
-    onUpdate(path, undefined);
+    if (path === 'mortality') {
+      // We pass 'undefined' specifically for the mortality key
+      // This tells onUpdate to remove this specific override
+      const updatedAge = { ...effectiveAge };
+      delete updatedAge.mortality;
+
+      // If backend/reducer expects 'undefined' to trigger a delete:
+      onUpdate('age', { ...updatedAge, mortality: undefined });
+    } else {
+      onUpdate(path, undefined);
+    }
   };
 
   const getFieldVariant = (value: any) => {
@@ -169,6 +199,8 @@ export default function IdentitySection({
     // If text is longer than 22 chars, stack it so it doesn't squish the label
     return stringValue.length > 22 ? 'stacked' : 'inline';
   };
+
+  const mortalityInheritance = getInheritanceInfo('mortality');
 
   return (
     <SectionShell
@@ -196,12 +228,53 @@ export default function IdentitySection({
           >
             Existence Type
           </label>
-          <SegmentedControl
-            options={MORTALITY_OPTIONS}
-            activeValue={effectiveAge.mortality}
-            onChange={(val) => handleAgeUpdate('mortality', val)}
-            aria-labelledby="label-existence-type"
-          />
+
+          <div className="flex items-center justify-start gap-3">
+            <div className="w-full max-w-[200px]">
+              <SegmentedControl
+                options={MORTALITY_OPTIONS}
+                activeValue={getEffectiveMortality()}
+                onChange={(val) => handleAgeUpdate('mortality', val)}
+                aria-labelledby="label-existence-type"
+              />
+            </div>
+
+            {!isMasterBook && (
+              <div className="flex items-center gap-1.5 shrink-0">
+                {mortalityInheritance.isOverridden ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleResetField('mortality');
+                    }}
+                    className="p-1 rounded-md 
+                      hover:bg-purple-100 text-purple-600 
+                      transition-colors group/reset 
+                      cursor-pointer
+                      outline-none focus:ring-2 focus:ring-purple-400 focus:bg-purple-50"
+                    title="Value overridden. Click to revert."
+                  >
+                    <Link2Off className="w-3.5 h-3.5" />
+                    <RotateCcw className="w-3 h-3 absolute -top-1 -right-1 opacity-0 group-hover/reset:opacity-100 bg-white rounded-full shadow-sm" />
+                  </button>
+                ) : (
+                  mortalityInheritance.inheritanceSource && (
+                    <div
+                      className="flex items-center gap-0.5 text-slate-300"
+                      title={`Inherited from ${mortalityInheritance.inheritanceSource === 'global' ? 'Series Bible' : `Book ${mortalityInheritance.inheritanceSource}`}`}
+                    >
+                      <Link2 className="w-3.5 h-3.5" />
+                      <span className="text-[9px] font-bold">
+                        {mortalityInheritance.inheritanceSource === 'global'
+                          ? 'G'
+                          : mortalityInheritance.inheritanceSource}
+                      </span>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* AGE */}
