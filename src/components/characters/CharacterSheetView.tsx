@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import CharacterSheetHeader from './CharacterSheetHeader';
@@ -218,6 +218,26 @@ export default function CharacterSheetView({
     }));
   };
 
+  const hideInheritance = useMemo(() => {
+    if (!project || !project.books || project.books.length === 0) return true;
+    if (project.type === 'standalone') return true;
+
+    const firstBookId = project.books[0]?.id;
+
+    const isActiveInThisProject = project.books.some(
+      (b) => b.id === activeBookId
+    );
+
+    // If it's not in this project, we're mid-switch.
+    // Treat it as Volume 1 (hide icons) until the context catches up.
+    if (!isActiveInThisProject) {
+      return true;
+    }
+
+    const result = firstBookId === activeBookId;
+    return result;
+  }, [project, activeBookId]);
+
   // ONLY return the hard loader if we have zero data (initial boot)
   if (!localData && isLoading) {
     return (
@@ -236,11 +256,6 @@ export default function CharacterSheetView({
     // 2. Tell App.tsx there is no longer an active character
     updateCharacter(null);
   };
-
-  const hideInheritance =
-    project?.type === 'standalone' || project?.books?.[0]?.id === activeBookId;
-
-  if (!localData) return null;
 
   return (
     <div className="max-w-4xl mx-auto py-12 px-6 relative">

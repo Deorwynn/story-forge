@@ -1,5 +1,6 @@
-import { Edit3, Link2, Link2Off, RotateCcw } from 'lucide-react';
+import { Edit3 } from 'lucide-react';
 import React, { useRef, useEffect, memo } from 'react';
+import InheritanceIndicator from './InheritanceIndicator';
 
 interface SmartFieldProps {
   label: string;
@@ -35,46 +36,6 @@ const SmartField = memo(
     onReset,
     isMasterBook = false,
   }: SmartFieldProps) => {
-    const renderInheritanceIcon = () => {
-      if (isEditing || isMasterBook) return null;
-
-      return (
-        <div className="flex items-center gap-1.5 ml-2 shrink-0">
-          {isOverridden ? (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onReset?.();
-              }}
-              title="Value overridden. Click to revert to inherited value."
-              className="
-              p-1 rounded-md 
-              hover:bg-purple-100 text-purple-600 
-              transition-colors group/reset 
-              cursor-pointer
-              outline-none focus:ring-2 focus:ring-purple-400 focus:bg-purple-50"
-            >
-              <Link2Off className="w-3.5 h-3.5" />
-              <RotateCcw
-                aria-hidden="true"
-                className="w-3 h-3 absolute -top-1 -right-1 opacity-0 group-hover/reset:opacity-100 group-focus:opacity-100 bg-white rounded-full shadow-sm transition-opacity"
-              />
-            </button>
-          ) : inheritanceSource ? (
-            <div
-              title={`Inherited from ${inheritanceSource === 'global' ? 'Series Bible' : `Book ${inheritanceSource}`}`}
-              className="flex items-center gap-0.5 text-slate-300 group-hover:text-purple-400 transition-colors"
-            >
-              <Link2 aria-hidden="true" className="w-3.5 h-3.5" />
-              <span className="text-[9px] font-bold">
-                {inheritanceSource === 'global' ? 'G' : inheritanceSource}
-              </span>
-            </div>
-          ) : null}
-        </div>
-      );
-    };
-
     const fieldRef = useRef<HTMLDivElement>(null);
     const labelId = `label-${id}`;
 
@@ -204,8 +165,13 @@ const SmartField = memo(
                   />
                 )}
 
-                {/* RENDER THE INHERITANCE ICON */}
-                {renderInheritanceIcon()}
+                <InheritanceIndicator
+                  inheritanceSource={inheritanceSource}
+                  isOverridden={isOverridden}
+                  onReset={onReset}
+                  isEditing={isEditing}
+                  isMasterBook={isMasterBook}
+                />
               </div>
             </div>
           )}
