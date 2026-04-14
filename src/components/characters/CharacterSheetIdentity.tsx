@@ -1,8 +1,9 @@
-import { Fingerprint, Link2, Link2Off, RotateCcw } from 'lucide-react';
+import { Fingerprint } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import SectionShell from './SectionShell';
 import SegmentedControl from '../shared/SegmentedControl';
 import SmartField from '../shared/SmartField';
+import InheritanceIndicator from '../shared/InheritanceIndicator';
 import { useWorkspace } from '../../context/WorkspaceContext';
 
 const MORTALITY_OPTIONS = [
@@ -239,41 +240,11 @@ export default function IdentitySection({
               />
             </div>
 
-            {!isMasterBook && (
-              <div className="flex items-center gap-1.5 shrink-0">
-                {mortalityInheritance.isOverridden ? (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleResetField('mortality');
-                    }}
-                    className="p-1 rounded-md 
-                      hover:bg-purple-100 text-purple-600 
-                      transition-colors group/reset 
-                      cursor-pointer
-                      outline-none focus:ring-2 focus:ring-purple-400 focus:bg-purple-50"
-                    title="Value overridden. Click to revert."
-                  >
-                    <Link2Off className="w-3.5 h-3.5" />
-                    <RotateCcw className="w-3 h-3 absolute -top-1 -right-1 opacity-0 group-hover/reset:opacity-100 bg-white rounded-full shadow-sm" />
-                  </button>
-                ) : (
-                  mortalityInheritance.inheritanceSource && (
-                    <div
-                      className="flex items-center gap-0.5 text-slate-300"
-                      title={`Inherited from ${mortalityInheritance.inheritanceSource === 'global' ? 'Series Bible' : `Book ${mortalityInheritance.inheritanceSource}`}`}
-                    >
-                      <Link2 className="w-3.5 h-3.5" />
-                      <span className="text-[9px] font-bold">
-                        {mortalityInheritance.inheritanceSource === 'global'
-                          ? 'G'
-                          : mortalityInheritance.inheritanceSource}
-                      </span>
-                    </div>
-                  )
-                )}
-              </div>
-            )}
+            <InheritanceIndicator
+              {...mortalityInheritance}
+              onReset={() => handleResetField('mortality')}
+              isMasterBook={isMasterBook}
+            />
           </div>
         </div>
 
