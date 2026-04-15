@@ -133,21 +133,24 @@ export default function CharacterSheetView({
     masterRef.current = character;
   }, [localData, character]);
 
-  // Helper for metadata updates (nested objects)
   const handleMetadataUpdate = (key: string, value: any) => {
     setLocalData((prev: any) => {
       if (!prev) return prev;
       const updated = { ...prev };
 
-      // --- RECONNECT / RESET LOGIC ---
-      // If value is undefined, it's a signal to remove the override and link back
+      // --- RESET LOGIC ---
       if (value === undefined) {
         if (activeBookId && updated.book_overrides?.[activeBookId]?.metadata) {
           const newOverrides = { ...updated.book_overrides };
           const bookData = { ...newOverrides[activeBookId] };
           const newMetadata = { ...bookData.metadata };
 
-          delete newMetadata[key];
+          if (key === 'age') {
+            delete newMetadata.age_value;
+            delete newMetadata.age_is_unknown;
+          } else {
+            delete newMetadata[key];
+          }
 
           bookData.metadata = newMetadata;
           newOverrides[activeBookId] = bookData;
@@ -156,46 +159,49 @@ export default function CharacterSheetView({
         return updated;
       }
 
-      // Identify if we are in the "Master" book
-      const isMasterBook =
-        project?.type === 'standalone' ||
-        project?.books?.[0]?.id === activeBookId;
+      const isMasterBook = project?.books?.[0]?.id === activeBookId;
 
       if (activeBookId && !isMasterBook) {
-        // --- BOOK OVERRIDE LOGIC ---
+        // --- BOOK OVERRIDE ---
         const allOverrides = { ...(updated.book_overrides || {}) };
         const specificBookData = { ...(allOverrides[activeBookId] || {}) };
+        const newBookMetadata = { ...(specificBookData.metadata || {}) };
 
-        specificBookData.metadata = {
-          ...(specificBookData.metadata || {}),
-          [key]: value,
-        };
+        if (key === 'age') {
+          newBookMetadata.age_value = value.value;
+          newBookMetadata.age_is_unknown = value.is_unknown;
+        } else {
+          newBookMetadata[key] = value; // sets 'mortality' separately
+        }
 
+        specificBookData.metadata = newBookMetadata;
         allOverrides[activeBookId] = specificBookData;
         updated.book_overrides = allOverrides;
       } else {
-        // --- GLOBAL VALUE LOGIC ---
-        // If we are in the master book OR no book is active, update the Series Bible
-        const newMetadata = {
-          ...(updated.metadata || {}),
-          [key]: value,
-        };
+        // --- GLOBAL VALUE ---
+        const newMetadata = { ...(updated.metadata || {}) };
 
-        // Special handling for Age: because it has a nested 'global_value'
         if (key === 'age') {
-          newMetadata.age = {
-            ...(updated.metadata?.age || {}),
-            global_value: value, // value here is the {value, mortality, is_unknown} object
+          newMetadata.age_value = {
+            ...newMetadata.age_value,
+            global_value: value.value,
+          };
+          newMetadata.age_is_unknown = {
+            ...newMetadata.age_is_unknown,
+            global_value: value.is_unknown,
+          };
+        } else if (
+          ['race', 'occupation', 'gender', 'mortality'].includes(key)
+        ) {
+          newMetadata[key] = {
+            ...newMetadata[key],
+            global_value: value,
+            book_overrides: newMetadata[key]?.book_overrides || {},
           };
         }
 
         updated.metadata = newMetadata;
-
-        // Sync root fields for the sidebar (Race/Gender etc)
-        if (key === 'race') updated.race = value;
-        if (key === 'gender') updated.gender = value;
       }
-
       return updated;
     });
   };

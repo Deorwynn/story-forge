@@ -40,103 +40,78 @@ export default function IdentitySection({
   }, [onStopEdit]);
 
   const getEffectiveAge = () => {
-    if (!activeBookId || !project?.books) {
-      return (
-        character.metadata?.age?.global_value || {
-          value: null,
-          is_unknown: true,
-          mortality: 'mortal',
-        }
-      );
-    }
-
-    const books = project.books;
-    const currentBookIndex = books.findIndex((b) => b.id === activeBookId);
-
-    // Walk backwards to find the nearest age override
-    for (let i = currentBookIndex; i >= 0; i--) {
-      const bookId = books[i].id;
-      const ageOverride = character.book_overrides?.[bookId]?.metadata?.age;
-
-      // If this book has an age object, use it
-      if (ageOverride) {
-        return ageOverride;
+    const getVal = (path: string, defaultVal: any) => {
+      if (!activeBookId || !project?.books) {
+        return character.metadata?.[path]?.global_value ?? defaultVal;
       }
-    }
 
-    // Fallback to Global
-    return (
-      character.metadata?.age?.global_value || {
-        value: null,
-        is_unknown: true,
-        mortality: 'mortal',
+      const books = project.books;
+      const currentBookIndex = books.findIndex((b) => b.id === activeBookId);
+
+      // Walk backwards for the specific sub-field (e.g., 'age_value')
+      for (let i = currentBookIndex; i >= 0; i--) {
+        const bookId = books[i].id;
+        const override = character.book_overrides?.[bookId]?.metadata?.[path];
+
+        // allow null, only skip if undefined
+        if (override !== undefined) return override;
       }
-    );
+
+      return character.metadata?.[path]?.global_value ?? defaultVal;
+    };
+
+    return {
+      value: getVal('age_value', null),
+      is_unknown: getVal('age_is_unknown', true),
+      mortality: getVal('mortality', 'mortal'),
+    };
   };
 
   const effectiveAge = getEffectiveAge();
 
   const getEffectiveMortality = () => {
-    if (!activeBookId || !project?.books) {
-      return character.metadata?.age?.global_value?.mortality || 'mortal';
-    }
-
-    const books = project.books;
-    const currentBookIndex = books.findIndex((b) => b.id === activeBookId);
-
-    // Walk backwards specifically for the mortality key
-    for (let i = currentBookIndex; i >= 0; i--) {
-      const bookId = books[i].id;
-      const val = character.book_overrides?.[bookId]?.metadata?.age?.mortality;
-      if (val !== undefined && val !== null) return val;
-    }
-
-    // Fallback to Global
-    return character.metadata?.age?.global_value?.mortality || 'mortal';
+    return getEffectiveValue('mortality') || 'mortal';
   };
 
-  // Updated Update Handler
   const handleAgeUpdate = (key: string, value: any) => {
-    const updatedAgeValue = {
-      ...effectiveAge,
-      [key]: value,
-    };
-
-    if (key === 'is_unknown' && value === true) {
-      updatedAgeValue.value = null;
+    if (key === 'mortality') {
+      // Send mortality as its own field update
+      onUpdate('mortality', value);
+    } else {
+      // Send age_value or age_is_unknown as the 'age' group
+      const updatedAge = {
+        ...effectiveAge,
+        [key]: value,
+      };
+      if (key === 'is_unknown' && value === true) {
+        updatedAge.value = null;
+      }
+      onUpdate('age', updatedAge);
     }
-
-    // Pass the cleaned object to the parent
-    onUpdate('age', updatedAgeValue);
   };
 
   const getEffectiveValue = (path: string) => {
-    if (!activeBookId || !project?.books)
-      return character.metadata?.[path] || '';
+    const bookExists = project?.books?.some((b) => b.id === activeBookId);
 
-    // Get the list of books in order
+    if (!activeBookId || !project?.books || !bookExists) {
+      const meta = character.metadata?.[path];
+      return meta?.global_value !== undefined ? meta.global_value : meta || '';
+    }
+
     const books = project.books;
     const currentBookIndex = books.findIndex((b) => b.id === activeBookId);
 
-    // Look at the current book and then walk BACKWARDS through previous books
-    // to find the most recent override.
     for (let i = currentBookIndex; i >= 0; i--) {
       const bookId = books[i].id;
       const override = character.book_overrides?.[bookId]?.metadata?.[path];
-
-      if (override !== undefined && override !== null) {
-        return override;
-      }
+      if (override !== undefined && override !== null) return override;
     }
 
-    // If no overrides exist in the current or any previous book, fallback to Global Metadata
     const globalMeta = character.metadata?.[path];
-    if (globalMeta !== undefined && globalMeta !== null && globalMeta !== '') {
-      return globalMeta;
-    }
+    // Check if it's a TemporalField structure
+    if (globalMeta?.global_value !== undefined) return globalMeta.global_value;
 
-    // Final Fallback to root level
-    return character[path] || '';
+    return globalMeta || '';
   };
 
   const getInheritanceInfo = (path: string) => {
@@ -145,31 +120,35 @@ export default function IdentitySection({
 
     const books = project.books;
     const currentBookIndex = books.findIndex((b) => b.id === activeBookId);
-
     if (currentBookIndex === 0)
       return { inheritanceSource: null, isOverridden: false };
 
-    // 1. Correctly locate the override in the CURRENT book
-    const currentOverride =
-      path === 'mortality'
-        ? character.book_overrides?.[activeBookId]?.metadata?.age?.mortality
-        : character.book_overrides?.[activeBookId]?.metadata?.[path];
+    // Helper to check if a "logical" field is overridden in a specific book
+    const checkOverride = (bookId: string, fieldPath: string) => {
+      const meta = character.book_overrides?.[bookId]?.metadata;
+      if (!meta) return false;
 
-    const hasCurrentOverride = currentOverride !== undefined;
+      if (fieldPath === 'age') {
+        // Age only unlinks if the specific numeric value or unknown status changes
+        return (
+          meta.age_value !== undefined || meta.age_is_unknown !== undefined
+        );
+      }
 
-    // 2. Find the source by walking backwards
+      if (fieldPath === 'mortality') {
+        // Mortality only unlinks if existence type changes
+        return meta.mortality !== undefined;
+      }
+
+      return meta[fieldPath] !== undefined;
+    };
+
+    const hasCurrentOverride = checkOverride(activeBookId, path);
+
+    // Find the source by walking backwards
     let source: number | 'global' = 'global';
-
     for (let i = currentBookIndex - 1; i >= 0; i--) {
-      const prevOverride =
-        path === 'mortality'
-          ? character.book_overrides?.[books[i].id]?.metadata?.age?.mortality
-          : character.book_overrides?.[books[i].id]?.metadata?.[path];
-
-      if (prevOverride !== undefined && prevOverride !== null) {
-        // Special check for age object to ensure it's not just an empty shell
-        if (path === 'age' && prevOverride.value === undefined) continue;
-
+      if (checkOverride(books[i].id, path)) {
         source = i + 1;
         break;
       }
@@ -182,17 +161,8 @@ export default function IdentitySection({
   };
 
   const handleResetField = (path: string) => {
-    if (path === 'mortality') {
-      // We pass 'undefined' specifically for the mortality key
-      // This tells onUpdate to remove this specific override
-      const updatedAge = { ...effectiveAge };
-      delete updatedAge.mortality;
-
-      // If backend/reducer expects 'undefined' to trigger a delete:
-      onUpdate('age', { ...updatedAge, mortality: undefined });
-    } else {
-      onUpdate(path, undefined);
-    }
+    // whatever path it is (age, mortality, race), tell the parent to delete it
+    onUpdate(path, undefined);
   };
 
   const getFieldVariant = (value: any) => {

@@ -2,7 +2,7 @@ use rusqlite::{params, Connection };
 use uuid::Uuid;
 use chrono::Utc;
 use crate::AppState;
-use crate::models::character::{Character, AgeData, TemporalField, CharacterMetadata};
+use crate::models::character::{Character, TemporalField, CharacterMetadata};
 
 #[tauri::command]
 pub async fn create_character(
@@ -11,7 +11,7 @@ pub async fn create_character(
     book_id: Option<String>,
     display_name: String,
     role: String,
-    race: String,
+    race: String, // take from the UI to set the initial value
     mut metadata: CharacterMetadata,
 ) -> Result<Character, String> {
     let path = crate::get_db_path(&app_handle)?;
@@ -20,18 +20,31 @@ pub async fn create_character(
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().timestamp();
 
-    // Initialize Age if it's missing from the call
-    if metadata.age.is_none() {
-        metadata.age = Some(TemporalField::<AgeData>::default());
+    // Initialize Age/Mortality fields
+    if metadata.age_value.is_none() {
+        metadata.age_value = Some(TemporalField::<Option<i32>>::default());
+    }
+    if metadata.age_is_unknown.is_none() {
+        metadata.age_is_unknown = Some(TemporalField::<bool>::default());
+    }
+    if metadata.mortality.is_none() {
+        metadata.mortality = Some(TemporalField::<String>::default());
+    }
+
+    if metadata.race.is_none() {
+        metadata.race = Some(TemporalField {
+            global_value: race,
+            book_overrides: std::collections::HashMap::new(),
+        });
     }
 
     let metadata_json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
     let overrides_json: Option<String> = None;
 
     conn.execute(
-        "INSERT INTO characters (id, project_id, book_id, display_name, role, race, metadata, last_modified, book_overrides)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        params![id, project_id, book_id, display_name, role, race, metadata_json, now, overrides_json],
+        "INSERT INTO characters (id, project_id, book_id, display_name, role, metadata, last_modified, book_overrides)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![id, project_id, book_id, display_name, role, metadata_json, now, overrides_json],
     ).map_err(|e| e.to_string())?;
 
     Ok(Character {
@@ -40,7 +53,6 @@ pub async fn create_character(
         book_id,
         display_name,
         role,
-        race,
         portrait_path: None,
         is_global: true,
         last_modified: now,
@@ -58,20 +70,19 @@ pub async fn get_characters(
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare("SELECT id, project_id, book_id, display_name, role, race, portrait_path, is_global, last_modified, metadata, book_overrides 
+        .prepare("SELECT id, project_id, book_id, display_name, role, portrait_path, is_global, last_modified, metadata, book_overrides 
                   FROM characters WHERE project_id = ?1")
         .map_err(|e| e.to_string())?;
 
     let character_iter = stmt.query_map(params![project_id], |row| {
-    let metadata_str: String = row.get(9)?;
-    let overrides_str: Option<String> = row.get(10)?;
-    
-    // Parse without the '?' here to avoid the type mismatch
-    let metadata: CharacterMetadata = serde_json::from_str(&metadata_str)
-        .unwrap_or_else(|_| CharacterMetadata::default());
+        let metadata_str: String = row.get(8)?; 
+        let overrides_str: Option<String> = row.get(9)?;
+        
+        let metadata: CharacterMetadata = serde_json::from_str(&metadata_str)
+            .unwrap_or_else(|_| CharacterMetadata::default());
 
-    let book_overrides: Option<serde_json::Value> = overrides_str
-        .and_then(|s| serde_json::from_str(&s).ok());
+        let book_overrides: Option<serde_json::Value> = overrides_str
+            .and_then(|s| serde_json::from_str(&s).ok());
 
         Ok(Character {
             id: row.get(0)?,
@@ -79,10 +90,9 @@ pub async fn get_characters(
             book_id: row.get(2)?,
             display_name: row.get(3)?,
             role: row.get(4)?,
-            race: row.get(5)?,
-            portrait_path: row.get(6)?,
-            is_global: row.get(7)?,
-            last_modified: row.get(8)?,
+            portrait_path: row.get(5)?,
+            is_global: row.get(6)?,
+            last_modified: row.get(7)?,
             metadata,
             book_overrides,
         })
@@ -104,18 +114,18 @@ pub async fn get_character(
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare("SELECT id, project_id, book_id, display_name, role, race, portrait_path, is_global, last_modified, metadata, book_overrides 
+        .prepare("SELECT id, project_id, book_id, display_name, role, portrait_path, is_global, last_modified, metadata, book_overrides 
                   FROM characters WHERE id = ?1")
         .map_err(|e| e.to_string())?;
 
     let character = stmt.query_row(params![id], |row| {
-        let metadata_str: String = row.get(9)?;
+        let metadata_str: String = row.get(8)?;
         let metadata: CharacterMetadata = serde_json::from_str(&metadata_str)
             .unwrap_or_else(|_| CharacterMetadata::default());
-        let overrides_str: Option<String> = row.get(10)?;
-
+            
+        let overrides_str: Option<String> = row.get(9)?;
         let book_overrides: Option<serde_json::Value> = overrides_str
-        .and_then(|s| serde_json::from_str(&s).ok());
+            .and_then(|s| serde_json::from_str(&s).ok());
 
         Ok(Character {
             id: row.get(0)?,
@@ -123,10 +133,9 @@ pub async fn get_character(
             book_id: row.get(2)?,
             display_name: row.get(3)?,
             role: row.get(4)?,
-            race: row.get(5)?,
-            portrait_path: row.get(6)?,
-            is_global: row.get(7)?,
-            last_modified: row.get(8)?,
+            portrait_path: row.get(5)?,
+            is_global: row.get(6)?,
+            last_modified: row.get(7)?,
             metadata,
             book_overrides,
         })
@@ -143,7 +152,7 @@ pub async fn update_character(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let now = Utc::now().timestamp();
 
-        // 1. Logic Layer: Derive display_name from metadata struct fields
+    // 1. Logic Layer: Derive display_name from metadata struct fields
     let first = character.metadata.first_name.trim();
     let middle = character.metadata.middle_name.as_deref().unwrap_or("").trim();
     let last = character.metadata.last_name.as_deref().unwrap_or("").trim();
@@ -157,11 +166,19 @@ pub async fn update_character(
         character.display_name = name_parts.join(" ");
     }
 
-    // 2. Use the Default implementation for Age
-    // This ensures that even "legacy" data or partial updates 
-    // always result in a valid AgeData object.
-    if character.metadata.age.is_none() {
-        character.metadata.age = Some(TemporalField::<AgeData>::default());
+    // 2. Initialize flattened fields if they are missing
+    if character.metadata.age_value.is_none() {
+        character.metadata.age_value = Some(TemporalField::<Option<i32>>::default());
+    }
+    if character.metadata.age_is_unknown.is_none() {
+        character.metadata.age_is_unknown = Some(TemporalField::<bool>::default());
+    }
+    if character.metadata.mortality.is_none() {
+        character.metadata.mortality = Some(TemporalField::<String>::default());
+    }
+    // Safety check for race in metadata
+    if character.metadata.race.is_none() {
+        character.metadata.race = Some(TemporalField::<String>::default());
     }
 
     let metadata_json = serde_json::to_string(&character.metadata).map_err(|e| e.to_string())?;
@@ -171,18 +188,16 @@ pub async fn update_character(
         "UPDATE characters SET 
             display_name = ?1, 
             role = ?2, 
-            race = ?3, 
-            portrait_path = ?4, 
-            is_global = ?5, 
-            metadata = ?6, 
-            last_modified = ?7,
-            book_id = ?8,
-            book_overrides = ?9
-            WHERE id = ?10",
+            portrait_path = ?3, 
+            is_global = ?4, 
+            metadata = ?5, 
+            last_modified = ?6,
+            book_id = ?7,
+            book_overrides = ?8
+            WHERE id = ?9",
         params![
             character.display_name,
             character.role,
-            character.race,
             character.portrait_path,
             character.is_global,
             metadata_json,
