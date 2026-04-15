@@ -1,11 +1,5 @@
 export type MortalityType = 'mortal' | 'ageless' | 'immortal';
 
-export interface AgeData {
-  value: number | null;
-  is_unknown: boolean;
-  mortality: MortalityType;
-}
-
 export interface TemporalField<T> {
   global_value: T;
   book_overrides: Record<string, T>;
@@ -17,7 +11,6 @@ export interface Character {
   book_id?: string | null;
   display_name: string;
   role: string;
-  race: string;
   portrait_path?: string | null;
   is_global: boolean;
   last_modified: number;
@@ -28,14 +21,15 @@ export interface Character {
     last_name?: string;
     nickname?: string;
     gender?: string;
-    age: TemporalField<AgeData>;
     languages: string[];
+    race: TemporalField<string>;
+    occupation: TemporalField<string>;
+    mortality: TemporalField<MortalityType>;
+    age_value: TemporalField<number | null>;
+    age_is_unknown: TemporalField<boolean>;
   };
-  // Note: These fields will likely go into 'metadata' eventually
-  // to be "Temporal/Book-specific"
   description?: string;
   traits?: string[];
   arc?: string;
   notes?: string;
-  occupation?: string;
 }

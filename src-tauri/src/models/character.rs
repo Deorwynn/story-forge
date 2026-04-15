@@ -8,29 +8,11 @@ pub struct Character {
     pub book_id: Option<String>,
     pub display_name: String,
     pub role: String,
-    pub race: String,
     pub portrait_path: Option<String>,
     pub is_global: bool,
     pub last_modified: i64,
     pub metadata: CharacterMetadata,
-    pub book_overrides: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AgeData {
-    pub value: Option<i32>, // Some(25) or None (for "Unknown")
-    pub is_unknown: bool,
-    pub mortality: String,
-}
-
-impl Default for AgeData {
-    fn default() -> Self {
-        Self {
-            value: None,
-            is_unknown: true,
-            mortality: "mortal".to_string(),
-        }
-    }
+    pub book_overrides: Option<serde_json::Value>, 
 }
 
 // A wrapper to handle the "Global vs Book-Specific" logic
@@ -46,8 +28,11 @@ pub struct CharacterMetadata {
     pub middle_name: Option<String>,
     pub last_name: Option<String>,
     pub nickname: Option<String>,
-    pub gender: Option<String>,
-    pub age: Option<TemporalField<AgeData>>, 
     pub languages: Vec<String>,
-    pub occupation: Option<String>,
+    pub gender: Option<TemporalField<String>>,
+    pub occupation: Option<TemporalField<String>>,
+    pub race: Option<TemporalField<String>>,
+    pub age_value: Option<TemporalField<Option<i32>>>,
+    pub age_is_unknown: Option<TemporalField<bool>>,
+    pub mortality: Option<TemporalField<String>>,
 }

@@ -130,12 +130,11 @@ fn init_db(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
             book_id TEXT, -- Nullable: links to specific book if not global
             display_name TEXT NOT NULL,
             role TEXT DEFAULT 'Supporting',
-            race TEXT DEFAULT 'Human',
             portrait_path TEXT,
             is_global BOOLEAN DEFAULT 1,
-            metadata TEXT NOT NULL, -- This stores our CharacterMetadata JSON
+            metadata TEXT NOT NULL,
             last_modified INTEGER NOT NULL,
-            book_overrides TEXT, -- New column to store book-specific overrides as JSON
+            book_overrides TEXT,
             FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
             FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE SET NULL
         );

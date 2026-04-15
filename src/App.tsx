@@ -286,6 +286,7 @@ function App() {
 
   const handleEnterProject = async (baseProject: Project) => {
     setCharacter(null); // Clear previous project's character
+    setActiveBookId(null);
     setIsInitialLoad(true); // Show the curtain immediately
 
     try {
@@ -453,6 +454,7 @@ function App() {
         onExit={() => {
           setActiveProject(null);
           setActiveTab(null);
+          setActiveBookId(null);
           setView('library');
         }}
         project={activeProject}
