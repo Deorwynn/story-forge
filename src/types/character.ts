@@ -27,6 +27,7 @@ export interface Character {
     mortality: TemporalField<MortalityType>;
     age_value: TemporalField<number | null>;
     age_is_unknown: TemporalField<boolean>;
+    perception?: TemporalField<string>;
   };
   description?: string;
   traits?: string[];

@@ -35,4 +35,5 @@ pub struct CharacterMetadata {
     pub age_value: Option<TemporalField<Option<i32>>>,
     pub age_is_unknown: Option<TemporalField<bool>>,
     pub mortality: Option<TemporalField<String>>,
+    pub perception: Option<TemporalField<String>>,
 }
