@@ -173,6 +173,24 @@ export default function IdentitySection({
 
   const mortalityInheritance = getInheritanceInfo('mortality');
 
+  const getFieldProps = (path: string) => {
+    const value = getEffectiveValue(path);
+
+    return {
+      id: path,
+      value: value,
+      isEditing: editingField === path,
+      onStartEdit,
+      onStopEdit,
+      onChange: (val: any) => onUpdate(path, val),
+      onReset: () => handleResetField(path),
+      variant: getFieldVariant(value) as 'inline' | 'stacked',
+      sectionRef,
+      isMasterBook,
+      ...getInheritanceInfo(path),
+    };
+  };
+
   return (
     <SectionShell
       title="Core Identity"
@@ -222,6 +240,7 @@ export default function IdentitySection({
         <SmartField
           label="Current Age"
           id="age"
+          type="custom"
           variant="inline"
           placeholder="Unknown Age"
           sectionRef={sectionRef}
@@ -233,7 +252,7 @@ export default function IdentitySection({
               ? 'Age Unknown'
               : effectiveAge.value
                 ? `${effectiveAge.value} years old`
-                : 'No age set'
+                : 'Not Specified'
           }
           {...getInheritanceInfo('age')}
           onReset={() => handleResetField('age')}
@@ -268,69 +287,27 @@ export default function IdentitySection({
 
         <SmartField
           label="Occupation / Role"
-          id="occupation"
-          variant={getFieldVariant(getEffectiveValue('occupation'))}
-          placeholder="No occupation listed"
-          sectionRef={sectionRef}
-          isEditing={editingField === 'occupation'}
-          onStartEdit={onStartEdit}
-          onStopEdit={onStopEdit}
-          value={getEffectiveValue('occupation')}
-          {...getInheritanceInfo('occupation')}
-          onReset={() => handleResetField('occupation')}
-          isMasterBook={isMasterBook}
-        >
-          <input
-            type="text"
-            value={getEffectiveValue('occupation')}
-            onChange={(e) => onUpdate('occupation', e.target.value)}
-            className="w-full bg-white border border-purple-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-400"
-          />
-        </SmartField>
+          type="text"
+          {...getFieldProps('occupation')}
+        />
 
         <SmartField
           label="Race / Species"
-          id="race"
-          variant={getFieldVariant(getEffectiveValue('race'))}
-          placeholder="No race specified"
-          sectionRef={sectionRef}
-          isEditing={editingField === 'race'}
-          onStartEdit={onStartEdit}
-          onStopEdit={onStopEdit}
-          value={getEffectiveValue('race')}
-          {...getInheritanceInfo('race')}
-          onReset={() => handleResetField('race')}
-          isMasterBook={isMasterBook}
-        >
-          <input
-            type="text"
-            value={getEffectiveValue('race')}
-            onChange={(e) => onUpdate('race', e.target.value)}
-            className="w-full bg-white border border-purple-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-400"
-          />
-        </SmartField>
+          type="text"
+          {...getFieldProps('race')}
+        />
 
         <SmartField
           label="Gender / Pronouns"
-          id="gender"
-          variant={getFieldVariant(getEffectiveValue('gender'))}
-          placeholder="Not specified"
-          sectionRef={sectionRef}
-          isEditing={editingField === 'gender'}
-          onStartEdit={onStartEdit}
-          onStopEdit={onStopEdit}
-          value={getEffectiveValue('gender')}
-          {...getInheritanceInfo('gender')}
-          onReset={() => handleResetField('gender')}
-          isMasterBook={isMasterBook}
-        >
-          <input
-            type="text"
-            value={getEffectiveValue('gender')}
-            onChange={(e) => onUpdate('gender', e.target.value)}
-            className="w-full bg-white border border-purple-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-400"
-          />
-        </SmartField>
+          type="text"
+          {...getFieldProps('gender')}
+        />
+
+        <SmartField
+          label="Perception"
+          type="textarea"
+          {...getFieldProps('perception')}
+        />
       </div>
     </SectionShell>
   );
