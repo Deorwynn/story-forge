@@ -1,10 +1,10 @@
 import { Fingerprint } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useMetadata } from '../../hooks/useMetadata';
 import SectionShell from './SectionShell';
 import SegmentedControl from '../shared/SegmentedControl';
 import SmartField from '../shared/SmartField';
 import InheritanceIndicator from '../shared/InheritanceIndicator';
-import { useWorkspace } from '../../context/WorkspaceContext';
 
 const MORTALITY_OPTIONS = [
   { value: 'mortal', label: 'Mortal' },
@@ -18,12 +18,29 @@ export default function IdentitySection({
   isMasterBook,
 }: any) {
   const [editingField, setEditingField] = useState<string | null>(null);
+  const [localAge, setLocalAge] = useState<number | string | null>(null);
   const sectionRef = useRef<HTMLDivElement>(null);
-  const { activeBookId, project } = useWorkspace();
 
   // Callbacks keep the SmartField from re-rendering unnecessarily
-  const onStartEdit = useCallback((id: string) => setEditingField(id), []);
   const onStopEdit = useCallback(() => setEditingField(null), []);
+
+  // Initialize metadata fields
+  const mortalityData = useMetadata(character, 'mortality');
+  const ageValueData = useMetadata(character, 'age_value');
+  const ageUnknownData = useMetadata(character, 'age_is_unknown');
+  const occupationData = useMetadata(character, 'occupation');
+  const raceData = useMetadata(character, 'race');
+  const genderData = useMetadata(character, 'gender');
+  const perceptionData = useMetadata(character, 'perception');
+
+  // Sync local buffer for Age (only when NOT typing)
+  useEffect(() => {
+    // Only sync if we aren't currently editing this specific field
+    // AND the value coming from the hook is actually different from our local state
+    if (editingField !== 'age_value' && ageValueData.value !== localAge) {
+      setLocalAge(ageValueData.value ?? '');
+    }
+  }, [ageValueData.value, editingField]);
 
   // Global click-out
   useEffect(() => {
@@ -39,157 +56,27 @@ export default function IdentitySection({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onStopEdit]);
 
-  const getEffectiveAge = () => {
-    const getVal = (path: string, defaultVal: any) => {
-      if (!activeBookId || !project?.books) {
-        return character.metadata?.[path]?.global_value ?? defaultVal;
-      }
-
-      const books = project.books;
-      const currentBookIndex = books.findIndex((b) => b.id === activeBookId);
-
-      // Walk backwards for the specific sub-field (e.g., 'age_value')
-      for (let i = currentBookIndex; i >= 0; i--) {
-        const bookId = books[i].id;
-        const override = character.book_overrides?.[bookId]?.metadata?.[path];
-
-        // allow null, only skip if undefined
-        if (override !== undefined) return override;
-      }
-
-      return character.metadata?.[path]?.global_value ?? defaultVal;
-    };
-
-    return {
-      value: getVal('age_value', null),
-      is_unknown: getVal('age_is_unknown', true),
-      mortality: getVal('mortality', 'mortal'),
-    };
-  };
-
-  const effectiveAge = getEffectiveAge();
-
-  const getEffectiveMortality = () => {
-    return getEffectiveValue('mortality') || 'mortal';
-  };
-
   const handleAgeUpdate = (key: string, value: any) => {
-    if (key === 'mortality') {
-      // Send mortality as its own field update
-      onUpdate('mortality', value);
-    } else {
-      // Send age_value or age_is_unknown as the 'age' group
-      const updatedAge = {
-        ...effectiveAge,
-        [key]: value,
-      };
-      if (key === 'is_unknown' && value === true) {
-        updatedAge.value = null;
-      }
-      onUpdate('age', updatedAge);
+    const backendKey = key === 'value' ? 'age_value' : 'age_is_unknown';
+    onUpdate(backendKey, value);
+
+    if (backendKey === 'age_is_unknown' && value === true) {
+      onUpdate('age_value', null);
+      setLocalAge('');
     }
   };
 
-  const getEffectiveValue = (path: string) => {
-    const bookExists = project?.books?.some((b) => b.id === activeBookId);
-
-    if (!activeBookId || !project?.books || !bookExists) {
-      const meta = character.metadata?.[path];
-      return meta?.global_value !== undefined ? meta.global_value : meta || '';
-    }
-
-    const books = project.books;
-    const currentBookIndex = books.findIndex((b) => b.id === activeBookId);
-
-    for (let i = currentBookIndex; i >= 0; i--) {
-      const bookId = books[i].id;
-      const override = character.book_overrides?.[bookId]?.metadata?.[path];
-      if (override !== undefined && override !== null) return override;
-    }
-
-    const globalMeta = character.metadata?.[path];
-    // Check if it's a TemporalField structure
-    if (globalMeta?.global_value !== undefined) return globalMeta.global_value;
-
-    return globalMeta || '';
-  };
-
-  const getInheritanceInfo = (path: string) => {
-    if (!activeBookId || !project?.books)
-      return { inheritanceSource: 'global' as const, isOverridden: false };
-
-    const books = project.books;
-    const currentBookIndex = books.findIndex((b) => b.id === activeBookId);
-    if (currentBookIndex === 0)
-      return { inheritanceSource: null, isOverridden: false };
-
-    // Helper to check if a "logical" field is overridden in a specific book
-    const checkOverride = (bookId: string, fieldPath: string) => {
-      const meta = character.book_overrides?.[bookId]?.metadata;
-      if (!meta) return false;
-
-      if (fieldPath === 'age') {
-        // Age only unlinks if the specific numeric value or unknown status changes
-        return (
-          meta.age_value !== undefined || meta.age_is_unknown !== undefined
-        );
-      }
-
-      if (fieldPath === 'mortality') {
-        // Mortality only unlinks if existence type changes
-        return meta.mortality !== undefined;
-      }
-
-      return meta[fieldPath] !== undefined;
-    };
-
-    const hasCurrentOverride = checkOverride(activeBookId, path);
-
-    // Find the source by walking backwards
-    let source: number | 'global' = 'global';
-    for (let i = currentBookIndex - 1; i >= 0; i--) {
-      if (checkOverride(books[i].id, path)) {
-        source = i + 1;
-        break;
-      }
-    }
-
-    return {
-      inheritanceSource: source,
-      isOverridden: hasCurrentOverride,
-    };
-  };
-
-  const handleResetField = (path: string) => {
-    // whatever path it is (age, mortality, race), tell the parent to delete it
-    onUpdate(path, undefined);
-  };
-
-  const getFieldVariant = (value: any) => {
-    const stringValue = String(value || '');
-    // If text is longer than 22 chars, stack it so it doesn't squish the label
-    return stringValue.length > 22 ? 'stacked' : 'inline';
-  };
-
-  const mortalityInheritance = getInheritanceInfo('mortality');
-
-  const getFieldProps = (path: string) => {
-    const value = getEffectiveValue(path);
-
-    return {
-      id: path,
-      value: value,
-      isEditing: editingField === path,
-      onStartEdit,
-      onStopEdit,
-      onChange: (val: any) => onUpdate(path, val),
-      onReset: () => handleResetField(path),
-      variant: getFieldVariant(value) as 'inline' | 'stacked',
-      sectionRef,
-      isMasterBook,
-      ...getInheritanceInfo(path),
-    };
-  };
+  // Props spreader helper
+  const getField = (hookData: any) => ({
+    ...hookData.smartProps,
+    isEditing: editingField === hookData.smartProps.id,
+    onStartEdit: (id: string) => setEditingField(id),
+    onStopEdit: () => setEditingField(null),
+    onChange: (val: any) => onUpdate(hookData.smartProps.id, val),
+    onReset: () => onUpdate(hookData.smartProps.id, undefined),
+    sectionRef,
+    isMasterBook,
+  });
 
   return (
     <SectionShell
@@ -222,15 +109,15 @@ export default function IdentitySection({
             <div className="w-full max-w-[200px]">
               <SegmentedControl
                 options={MORTALITY_OPTIONS}
-                activeValue={getEffectiveMortality()}
-                onChange={(val) => handleAgeUpdate('mortality', val)}
+                activeValue={mortalityData.value || 'mortal'}
+                onChange={(val) => onUpdate('mortality', val)}
                 aria-labelledby="label-existence-type"
               />
             </div>
 
             <InheritanceIndicator
-              {...mortalityInheritance}
-              onReset={() => handleResetField('mortality')}
+              {...mortalityData.smartProps}
+              onReset={() => onUpdate('mortality', undefined)}
               isMasterBook={isMasterBook}
             />
           </div>
@@ -239,40 +126,35 @@ export default function IdentitySection({
         {/* AGE */}
         <SmartField
           label="Current Age"
-          id="age"
           type="custom"
+          {...getField(ageValueData)}
           variant="inline"
-          placeholder="Unknown Age"
-          sectionRef={sectionRef}
-          isEditing={editingField === 'age'}
-          onStartEdit={onStartEdit}
-          onStopEdit={onStopEdit}
           value={
-            effectiveAge.is_unknown
+            ageUnknownData.value === true // Explicit check
               ? 'Age Unknown'
-              : effectiveAge.value
-                ? `${effectiveAge.value} years old`
+              : typeof ageValueData.value === 'number'
+                ? `${ageValueData.value} years old`
                 : 'Not Specified'
           }
-          {...getInheritanceInfo('age')}
-          onReset={() => handleResetField('age')}
-          isMasterBook={isMasterBook}
         >
           <div className="flex items-center gap-3">
             <input
               type="number"
-              value={effectiveAge.value ?? ''}
-              disabled={effectiveAge.is_unknown}
-              onChange={(e) =>
-                handleAgeUpdate('value', parseInt(e.target.value) || null)
-              }
+              value={localAge ?? ''}
+              disabled={ageUnknownData.value}
+              onChange={(e) => {
+                const val = e.target.value;
+                setLocalAge(val);
+                const numericVal = val === '' ? null : parseInt(val, 10);
+                handleAgeUpdate('value', numericVal);
+              }}
               className="w-full bg-white border border-purple-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-400"
             />
             <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors focus-within:ring-2 focus-within:ring-purple-400">
               <input
                 type="checkbox"
                 aria-label="Mark age as unknown"
-                checked={effectiveAge.is_unknown}
+                checked={!!ageUnknownData.value}
                 onChange={(e) =>
                   handleAgeUpdate('is_unknown', e.target.checked)
                 }
@@ -285,28 +167,34 @@ export default function IdentitySection({
           </div>
         </SmartField>
 
+        {/* Standard Fields */}
+
         <SmartField
           label="Occupation / Role"
           type="text"
-          {...getFieldProps('occupation')}
+          {...getField(occupationData)}
+          variant="inline"
         />
 
         <SmartField
           label="Race / Species"
           type="text"
-          {...getFieldProps('race')}
+          {...getField(raceData)}
+          variant="inline"
         />
 
         <SmartField
           label="Gender / Pronouns"
           type="text"
-          {...getFieldProps('gender')}
+          {...getField(genderData)}
+          variant="inline"
         />
 
         <SmartField
           label="Perception"
           type="textarea"
-          {...getFieldProps('perception')}
+          {...getField(perceptionData)}
+          variant="stacked"
         />
       </div>
     </SectionShell>

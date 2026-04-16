@@ -145,12 +145,7 @@ export default function CharacterSheetView({
           const bookData = { ...newOverrides[activeBookId] };
           const newMetadata = { ...bookData.metadata };
 
-          if (key === 'age') {
-            delete newMetadata.age_value;
-            delete newMetadata.age_is_unknown;
-          } else {
-            delete newMetadata[key];
-          }
+          delete newMetadata[key];
 
           bookData.metadata = newMetadata;
           newOverrides[activeBookId] = bookData;
@@ -162,39 +157,40 @@ export default function CharacterSheetView({
       const isMasterBook = project?.books?.[0]?.id === activeBookId;
 
       if (activeBookId && !isMasterBook) {
-        // --- BOOK OVERRIDE ---
+        // --- BOOK OVERRIDE (Volumes 2+) ---
         const allOverrides = { ...(updated.book_overrides || {}) };
         const specificBookData = { ...(allOverrides[activeBookId] || {}) };
         const newBookMetadata = { ...(specificBookData.metadata || {}) };
 
-        if (key === 'age') {
-          newBookMetadata.age_value = value.value;
-          newBookMetadata.age_is_unknown = value.is_unknown;
-        } else {
-          newBookMetadata[key] = value; // sets 'mortality' separately
-        }
+        newBookMetadata[key] = value;
 
         specificBookData.metadata = newBookMetadata;
         allOverrides[activeBookId] = specificBookData;
         updated.book_overrides = allOverrides;
       } else {
-        // --- GLOBAL VALUE ---
+        // --- GLOBAL VALUE (Volume 1 / Standalone) ---
         const newMetadata = { ...(updated.metadata || {}) };
 
-        if (key === 'age') {
-          newMetadata.age_value = {
-            ...newMetadata.age_value,
-            global_value: value.value,
-          };
-          newMetadata.age_is_unknown = {
-            ...newMetadata.age_is_unknown,
-            global_value: value.is_unknown,
-          };
-        } else if (
-          ['race', 'occupation', 'gender', 'mortality'].includes(key)
-        ) {
+        // Unified Logic: If it's a metadata field, wrap it for Rust's TemporalField
+        const metadataFields = [
+          'race',
+          'occupation',
+          'gender',
+          'mortality',
+          'perception',
+          'age_value',
+          'age_is_unknown',
+        ];
+
+        if (metadataFields.includes(key)) {
+          // Check if current is already an object, else start fresh
+          const currentField =
+            typeof newMetadata[key] === 'object' && newMetadata[key] !== null
+              ? newMetadata[key]
+              : {};
+
           newMetadata[key] = {
-            ...newMetadata[key],
+            ...currentField,
             global_value: value,
             book_overrides: newMetadata[key]?.book_overrides || {},
           };
