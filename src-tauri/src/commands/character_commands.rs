@@ -166,21 +166,6 @@ pub async fn update_character(
         character.display_name = name_parts.join(" ");
     }
 
-    // 2. Initialize flattened fields if they are missing
-    if character.metadata.age_value.is_none() {
-        character.metadata.age_value = Some(TemporalField::<Option<i32>>::default());
-    }
-    if character.metadata.age_is_unknown.is_none() {
-        character.metadata.age_is_unknown = Some(TemporalField::<bool>::default());
-    }
-    if character.metadata.mortality.is_none() {
-        character.metadata.mortality = Some(TemporalField::<String>::default());
-    }
-    // Safety check for race in metadata
-    if character.metadata.race.is_none() {
-        character.metadata.race = Some(TemporalField::<String>::default());
-    }
-
     let metadata_json = serde_json::to_string(&character.metadata).map_err(|e| e.to_string())?;
     let overrides_json = serde_json::to_string(&character.book_overrides).map_err(|e| e.to_string())?;
 

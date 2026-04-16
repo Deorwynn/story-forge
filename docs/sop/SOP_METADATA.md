@@ -68,10 +68,23 @@ Follow these steps to add a new character trait (e.g., "Social Standing") to the
 1. Update the `CharacterMetadata` interface in `src/types/character.ts`.
 2. Add the new key to any initial state or mock data constants.
 
-### Step C: UI Integration
+### Step C: Update Handler Registration (Critical)
 
-1. Place a new `SmartField` instance in one of the character sheet sections (e.g., CharacterSheetIdentity.tsx).
-2. Connect it to the character update handler using the correct metadata path (e.g., `metadata.social_rank`).
+1. Open CharacterSheetView.tsx and locate the handleMetadataUpdate function.
+2. Add the new key to the inclusion array for Global/Master updates:
+   > `} else if (['race', 'occupation', 'perception', 'your_new_key'].includes(key)) {`  
+   > Failure to do this will result in the field being read-only in the Master Book (Volume 1 in series).
+
+### Step D: UI Integration
+
+1. Initialize the data at the top of the component (e.g., CharacterSheetIdentity.tsx):
+   > `const socialData = useMetadata(character, 'social_standing');`
+2. Render a new `SmartField` instance using the `getField` spreader to keep the JSX clean:
+   > `<SmartField`  
+   > `  label="Social Standing"`  
+   > `  type="text"`  
+   > `  {...getField(socialData)}`  
+   > `/>`
 
 ## 5. Mandatory Validation Checklist
 

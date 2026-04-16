@@ -109,6 +109,7 @@ const SmartField = memo(
         case 'textarea':
           return (
             <textarea
+              autoFocus
               value={value || ''}
               onChange={(e) => onChange?.(e.target.value)}
               className={`${commonClasses} min-h-[120px] py-2 resize-none leading-normal`}
@@ -175,10 +176,12 @@ const SmartField = memo(
           )}
         </span>
 
-        <div className="flex-1 relative w-full min-h-[40px] flex items-center">
+        <div
+          className={`flex-1 relative w-full min-h-[40px] flex items-center ${type === 'textarea' ? 'pt-2' : ''}`}
+        >
           {isEditing ? (
             <div
-              className={`w-full h-full flex ${type === 'textarea' ? 'items-start' : 'items-center'}`}
+              className={`w-full h-full flex border-0 border-purple-200 rounded-xl outline-none ${type === 'textarea' ? 'items-start' : 'items-center'}`}
             >
               {renderInput()}
             </div>
@@ -188,9 +191,12 @@ const SmartField = memo(
               onClick={() => onStartEdit(id)}
               role="button"
               aria-labelledby={labelId}
-              className={`w-full min-h-[40px] py-2 px-4 flex justify-between cursor-pointer rounded-xl border border-slate-100 hover:bg-slate-50 outline-none focus:ring-2 focus:ring-purple-400 focus:bg-purple-50/30 group/field transition-colors ${
-                type === 'textarea' ? 'items-start' : 'items-center'
-              }`}
+              className={`
+                group/field w-full min-h-[40px] py-2 px-4 flex justify-between
+                cursor-pointer rounded-xl transition-colors
+                outline-none border border-slate-100 hover:bg-slate-50 focus:ring-2 focus:ring-purple-400 focus:bg-purple-50/30
+                ${type === 'textarea' ? 'items-start' : 'items-center'}
+              `}
             >
               <span
                 className={`text-sm font-medium pointer-events-none block ${
