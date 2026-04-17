@@ -25,13 +25,13 @@ export function useMetadata(character: any, path: string) {
     let foundAtStep = -1;
 
     if (bookExists && currentIndex !== -1) {
-      // Walk backwards from current book to Volume 1
       for (let i = currentIndex; i >= 0; i--) {
         const bookId = books[i].id;
-        const override = character.book_overrides?.[bookId]?.metadata?.[path];
+        const metadata = character.book_overrides?.[bookId]?.metadata;
 
-        if (override !== undefined && override !== null) {
-          effectiveValue = override;
+        // Check if the key exists in the object, even if the value is null
+        if (metadata && Object.prototype.hasOwnProperty.call(metadata, path)) {
+          effectiveValue = metadata[path];
           foundAtStep = i;
           break;
         }
@@ -41,17 +41,23 @@ export function useMetadata(character: any, path: string) {
     // 2. Fallback to Global if no book overrides found
     if (effectiveValue === undefined) {
       const globalData = character.metadata?.[path];
-      effectiveValue =
-        typeof globalData === 'object' && globalData !== null
-          ? globalData.global_value
-          : globalData;
+      if (globalData !== undefined) {
+        effectiveValue =
+          typeof globalData === 'object' && globalData !== null
+            ? globalData.global_value
+            : globalData;
+      }
     }
 
     // 3. Determine Inheritance Info
+    const currentMetadata =
+      currentIndex !== -1
+        ? character.book_overrides?.[books[currentIndex].id]?.metadata
+        : null;
+
     const isOverridden =
-      currentIndex !== -1 &&
-      character.book_overrides?.[books[currentIndex].id]?.metadata?.[path] !==
-        undefined;
+      !!currentMetadata &&
+      Object.prototype.hasOwnProperty.call(currentMetadata, path);
 
     let source: number | 'global' | null = 'global';
 
@@ -64,9 +70,10 @@ export function useMetadata(character: any, path: string) {
       // Find the "potential" source for the reset button
       source = 'global';
       for (let i = currentIndex - 1; i >= 0; i--) {
+        const prevMetadata = character.book_overrides?.[books[i].id]?.metadata;
         if (
-          character.book_overrides?.[books[i].id]?.metadata?.[path] !==
-          undefined
+          prevMetadata &&
+          Object.prototype.hasOwnProperty.call(prevMetadata, path)
         ) {
           source = i + 1;
           break;
@@ -74,12 +81,15 @@ export function useMetadata(character: any, path: string) {
       }
     }
 
+    const finalLogicValue =
+      effectiveValue === undefined ? null : effectiveValue;
+
     return {
-      value: effectiveValue ?? '',
+      value: finalLogicValue,
       inheritanceSource: source,
       isOverridden,
       smartProps: {
-        value: effectiveValue ?? '',
+        value: finalLogicValue ?? '',
         inheritanceSource: source,
         isOverridden,
         id: path,

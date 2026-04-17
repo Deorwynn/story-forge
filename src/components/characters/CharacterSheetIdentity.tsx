@@ -67,16 +67,28 @@ export default function IdentitySection({
   };
 
   // Props spreader helper
-  const getField = (hookData: any) => ({
-    ...hookData.smartProps,
-    isEditing: editingField === hookData.smartProps.id,
-    onStartEdit: (id: string) => setEditingField(id),
-    onStopEdit: () => setEditingField(null),
-    onChange: (val: any) => onUpdate(hookData.smartProps.id, val),
-    onReset: () => onUpdate(hookData.smartProps.id, undefined),
-    sectionRef,
-    isMasterBook,
-  });
+  const getField = (hookData: any) => {
+    const baseProps = {
+      ...hookData.smartProps,
+      isEditing: editingField === hookData.smartProps.id,
+      onStartEdit: (id: string) => setEditingField(id),
+      onStopEdit: () => setEditingField(null),
+      onChange: (val: any) => onUpdate(hookData.smartProps.id, val),
+      onReset: () => onUpdate(hookData.smartProps.id, undefined), // Default reset
+      sectionRef,
+      isMasterBook,
+    };
+
+    // SPECIAL CASE: If this is the age field, reset the 'unknown' toggle too
+    if (hookData.smartProps.id === 'age_value') {
+      baseProps.onReset = () => {
+        onUpdate('age_value', undefined);
+        onUpdate('age_is_unknown', undefined);
+      };
+    }
+
+    return baseProps;
+  };
 
   return (
     <SectionShell
