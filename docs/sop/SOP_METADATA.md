@@ -72,7 +72,7 @@ Follow these steps to add a new character trait (e.g., "Social Standing") to the
 
 1. Open CharacterSheetView.tsx and locate the handleMetadataUpdate function.
 2. Add the new key to the inclusion array for Global/Master updates:
-   > `} else if (['race', 'occupation', 'perception', 'your_new_key'].includes(key)) {`  
+   > `const metadataFields = ['race', 'occupation', 'perception', 'your_new_key'];`  
    > Failure to do this will result in the field being read-only in the Master Book (Volume 1 in series).
 
 ### Step D: UI Integration

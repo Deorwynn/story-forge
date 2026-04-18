@@ -5,6 +5,7 @@ import SectionShell from './SectionShell';
 import SegmentedControl from '../shared/SegmentedControl';
 import SmartField from '../shared/SmartField';
 import InheritanceIndicator from '../shared/InheritanceIndicator';
+import SubHeader from '../shared/SubHeader';
 
 const MORTALITY_OPTIONS = [
   { value: 'mortal', label: 'Mortal' },
@@ -103,111 +104,118 @@ export default function IdentitySection({
             setEditingField(null);
           }
         }}
-        className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-1"
+        className="space-y-8"
       >
-        {/* EXISTENCE TYPE */}
-        <div
-          className="space-y-2 col-span-1 lg:col-span-2"
-          onMouseDown={() => setEditingField(null)}
-        >
-          <label
-            id="label-existence-type"
-            className="text-[10px] font-bold text-slate-400 uppercase tracking-tight"
-          >
-            Existence Type
-          </label>
+        <section>
+          <SubHeader title="Basic Information" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-2 mt-4">
+            {/* Left Column */}
+            <div className="flex flex-col space-y-2">
+              <div
+                className="space-y-2 col-span-1 lg:col-span-2"
+                onMouseDown={() => setEditingField(null)}
+              >
+                <label
+                  id="label-existence-type"
+                  className="text-[10px] font-bold text-slate-400 uppercase tracking-tight"
+                >
+                  Existence Type
+                </label>
 
-          <div className="flex items-center justify-start gap-3">
-            <div className="w-full max-w-[200px]">
-              <SegmentedControl
-                options={MORTALITY_OPTIONS}
-                activeValue={mortalityData.value || 'mortal'}
-                onChange={(val) => onUpdate('mortality', val)}
-                aria-labelledby="label-existence-type"
+                <div className="flex items-center justify-start gap-3">
+                  <div className="w-full max-w-[200px]">
+                    <SegmentedControl
+                      options={MORTALITY_OPTIONS}
+                      activeValue={mortalityData.value || 'mortal'}
+                      onChange={(val) => onUpdate('mortality', val)}
+                      aria-labelledby="label-existence-type"
+                    />
+                  </div>
+
+                  <InheritanceIndicator
+                    {...mortalityData.smartProps}
+                    onReset={() => onUpdate('mortality', undefined)}
+                    isMasterBook={isMasterBook}
+                  />
+                </div>
+              </div>
+
+              <SmartField
+                label="Current Age"
+                type="custom"
+                {...getField(ageValueData)}
+                variant="inline"
+                value={
+                  ageUnknownData.value === true // Explicit check
+                    ? 'Age Unknown'
+                    : typeof ageValueData.value === 'number'
+                      ? `${ageValueData.value} years old`
+                      : 'Not Specified'
+                }
+              >
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    value={localAge ?? ''}
+                    disabled={ageUnknownData.value}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setLocalAge(val);
+                      const numericVal = val === '' ? null : parseInt(val, 10);
+                      handleAgeUpdate('value', numericVal);
+                    }}
+                    className="w-full bg-white border border-purple-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-400"
+                  />
+                  <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors focus-within:ring-2 focus-within:ring-purple-400">
+                    <input
+                      type="checkbox"
+                      aria-label="Mark age as unknown"
+                      checked={!!ageUnknownData.value}
+                      onChange={(e) =>
+                        handleAgeUpdate('is_unknown', e.target.checked)
+                      }
+                      className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                    />
+                    <span className="text-xs font-medium text-slate-600">
+                      Unknown
+                    </span>
+                  </label>
+                </div>
+              </SmartField>
+
+              <SmartField
+                label="Race / Species"
+                type="text"
+                {...getField(raceData)}
+                variant="inline"
+              />
+
+              <SmartField
+                label="Perception"
+                type="textarea"
+                {...getField(perceptionData)}
+                variant="stacked"
               />
             </div>
 
-            <InheritanceIndicator
-              {...mortalityData.smartProps}
-              onReset={() => onUpdate('mortality', undefined)}
-              isMasterBook={isMasterBook}
-            />
-          </div>
-        </div>
-
-        {/* AGE */}
-        <SmartField
-          label="Current Age"
-          type="custom"
-          {...getField(ageValueData)}
-          variant="inline"
-          value={
-            ageUnknownData.value === true // Explicit check
-              ? 'Age Unknown'
-              : typeof ageValueData.value === 'number'
-                ? `${ageValueData.value} years old`
-                : 'Not Specified'
-          }
-        >
-          <div className="flex items-center gap-3">
-            <input
-              type="number"
-              value={localAge ?? ''}
-              disabled={ageUnknownData.value}
-              onChange={(e) => {
-                const val = e.target.value;
-                setLocalAge(val);
-                const numericVal = val === '' ? null : parseInt(val, 10);
-                handleAgeUpdate('value', numericVal);
-              }}
-              className="w-full bg-white border border-purple-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-400"
-            />
-            <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors focus-within:ring-2 focus-within:ring-purple-400">
-              <input
-                type="checkbox"
-                aria-label="Mark age as unknown"
-                checked={!!ageUnknownData.value}
-                onChange={(e) =>
-                  handleAgeUpdate('is_unknown', e.target.checked)
-                }
-                className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+            {/* Right Column */}
+            <div className="flex flex-col space-y-2">
+              <SmartField
+                label="Occupation / Role"
+                type="text"
+                {...getField(occupationData)}
+                variant="inline"
               />
-              <span className="text-xs font-medium text-slate-600">
-                Unknown
-              </span>
-            </label>
+
+              <SmartField
+                label="Gender / Pronouns"
+                type="text"
+                {...getField(genderData)}
+                variant="inline"
+              />
+            </div>
           </div>
-        </SmartField>
-
-        {/* Standard Fields */}
-
-        <SmartField
-          label="Occupation / Role"
-          type="text"
-          {...getField(occupationData)}
-          variant="inline"
-        />
-
-        <SmartField
-          label="Race / Species"
-          type="text"
-          {...getField(raceData)}
-          variant="inline"
-        />
-
-        <SmartField
-          label="Gender / Pronouns"
-          type="text"
-          {...getField(genderData)}
-          variant="inline"
-        />
-
-        <SmartField
-          label="Perception"
-          type="textarea"
-          {...getField(perceptionData)}
-          variant="stacked"
-        />
+        </section>
       </div>
     </SectionShell>
   );

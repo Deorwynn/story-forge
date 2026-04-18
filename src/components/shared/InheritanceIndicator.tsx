@@ -54,7 +54,7 @@ const InheritanceIndicator = ({
         </button>
       ) : inheritanceSource ? (
         <div
-          className="flex items-center gap-0.5 text-slate-300 ml-1 cursor-help"
+          className="flex items-center gap-0.5 text-slate-400 ml-1 cursor-help"
           role="note"
           aria-label={`Inherited from ${sourceLabel}`}
           title={`Inherited from ${sourceLabel}`}

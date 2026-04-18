@@ -28,6 +28,17 @@ export interface Character {
     age_value: TemporalField<number | null>;
     age_is_unknown: TemporalField<boolean>;
     perception?: TemporalField<string>;
+    height?: TemporalField<string>;
+    physique?: TemporalField<string>;
+    apparent_age?: TemporalField<string>;
+    hair?: TemporalField<string>;
+    eye_color?: TemporalField<string>;
+    scars?: TemporalField<string>;
+    tattoos?: TemporalField<string>;
+    distinctive_features?: TemporalField<string>;
+    clothing_style?: TemporalField<string>;
+    posture_gait?: TemporalField<string>;
+    color_palette?: TemporalField<string>;
   };
   description?: string;
   traits?: string[];

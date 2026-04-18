@@ -5,6 +5,7 @@ import CharacterSheetHeader from './CharacterSheetHeader';
 import CharacterSheetIdentity from './CharacterSheetIdentity';
 import CharacterSheetDangerZone from './CharacterSheetDangerZone';
 import { Character } from '../../types/character';
+import CharacterSheetAppearance from './CharacterSheetAppearance';
 
 export default function CharacterSheetView({
   characterId,
@@ -180,6 +181,17 @@ export default function CharacterSheetView({
           'perception',
           'age_value',
           'age_is_unknown',
+          'height',
+          'physique',
+          'apparent_age',
+          'hair',
+          'eye_color',
+          'scars',
+          'tattoos',
+          'distinctive_features',
+          'clothing_style',
+          'posture_gait',
+          'color_palette',
         ];
 
         if (metadataFields.includes(key)) {
@@ -286,6 +298,12 @@ export default function CharacterSheetView({
         />
 
         <CharacterSheetIdentity
+          character={localData}
+          onUpdate={handleMetadataUpdate}
+          isMasterBook={hideInheritance}
+        />
+
+        <CharacterSheetAppearance
           character={localData}
           onUpdate={handleMetadataUpdate}
           isMasterBook={hideInheritance}
