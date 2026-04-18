@@ -105,14 +105,22 @@ const SmartField = memo(
       const commonClasses =
         'w-full bg-white border border-purple-200 rounded-xl px-4 text-sm outline-none focus:ring-2 focus:ring-purple-400 transition-all';
 
+      const behaviorProps = {
+        spellCheck: false,
+        autoComplete: 'off',
+        autoCorrect: 'off',
+        autoCapitalize: 'off',
+      };
+
       switch (type) {
         case 'textarea':
           return (
             <textarea
               autoFocus
+              {...behaviorProps}
               value={value || ''}
               onChange={(e) => onChange?.(e.target.value)}
-              className={`${commonClasses} min-h-[120px] py-2 resize-none leading-normal`}
+              className={`${commonClasses} py-2 field-sizing-content leading-relaxed`}
             />
           );
         case 'number':
@@ -129,6 +137,7 @@ const SmartField = memo(
           return (
             <input
               type="text"
+              {...behaviorProps}
               value={value || ''}
               onChange={(e) => onChange?.(e.target.value)}
               className={`${commonClasses} h-10 py-2`}
@@ -139,13 +148,13 @@ const SmartField = memo(
 
     const containerClasses =
       variant === 'inline'
-        ? 'flex flex-col md:flex-row md:items-center gap-1 md:gap-4 py-2 md:py-1 group min-h-[44px]'
-        : 'flex flex-col space-y-1 min-h-[68px] group';
+        ? 'flex flex-col md:flex-row md:items-center gap-1 md:gap-4 border-1 border-hidden rounded-xl md:py-1 group min-h-[44px] bg-slate-100 p-2'
+        : 'flex flex-col space-y-1 min-h-[68px] group border-1 border-hidden rounded-xl bg-slate-100 p-2';
 
     const labelClasses =
       variant === 'inline'
-        ? 'text-[10px] font-bold text-slate-400 uppercase tracking-tight shrink-0 w-full md:w-28 flex justify-between items-center md:pr-2'
-        : 'text-[10px] font-bold text-slate-400 uppercase tracking-tight flex justify-between items-center h-4';
+        ? 'text-[10px] font-bold text-slate-500 uppercase tracking-tight shrink-0 w-full md:w-28 flex justify-between items-center md:pr-2 ml-2 md:border-r md:border-slate-300'
+        : 'text-[10px] font-bold text-slate-500 uppercase tracking-tight flex justify-between items-center h-4 ml-2 mb-1';
 
     return (
       <div
@@ -162,22 +171,41 @@ const SmartField = memo(
         }}
       >
         <span id={labelId} className={labelClasses}>
-          {label}
+          <span
+            className={
+              variant === 'stacked'
+                ? 'border-b border-slate-300 pb-0.5'
+                : 'border-b border-slate-300 pb-0.5 md:border-0 md:pb-0'
+            }
+          >
+            {label}
+          </span>
+          {/* Edit Icon for Stacked Variant */}
           {variant === 'stacked' && !isEditing && (
-            <div className="flex items-center gap-2">
-              <button
-                tabIndex={-1}
-                onClick={() => onStartEdit(id)}
-                className="opacity-0 group-hover:opacity-100 transition-opacity text-purple-500 hover:text-purple-700 cursor-pointer pointer-events-auto"
-              >
-                <Edit3 aria-hidden="true" className="w-3 h-3" />
-              </button>
+            <div className="flex items-center gap-2 mr-4">
+              {!isEditing && (
+                <button
+                  tabIndex={-1}
+                  onClick={() => onStartEdit(id)}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity text-purple-500 hover:text-purple-700 cursor-pointer"
+                >
+                  <Edit3 aria-hidden="true" className="w-3 h-3" />
+                </button>
+              )}
+
+              <InheritanceIndicator
+                inheritanceSource={inheritanceSource}
+                isOverridden={isOverridden}
+                onReset={onReset}
+                isEditing={isEditing}
+                isMasterBook={isMasterBook}
+              />
             </div>
           )}
         </span>
 
         <div
-          className={`flex-1 relative w-full min-h-[40px] flex items-center ${type === 'textarea' ? 'pt-2' : ''}`}
+          className={`flex-1 relative w-full min-h-[40px] flex items-start min-w-0`}
         >
           {isEditing ? (
             <div
@@ -201,16 +229,16 @@ const SmartField = memo(
               <span
                 className={`text-sm font-medium pointer-events-none block ${
                   value ? 'text-slate-900' : 'text-slate-400 italic'
-                } ${variant === 'stacked' ? 'whitespace-normal' : 'truncate'}`}
+                } ${variant === 'stacked' ? 'whitespace-normal leading-relaxed' : 'truncate'}`}
               >
                 {value || placeholder}
               </span>
 
-              <div
-                className={`flex items-center gap-2 shrink-0 ${type === 'textarea' ? 'mt-0.5' : ''}`}
-              >
-                {/* Edit Icon for Inline Variant */}
-                {variant === 'inline' && (
+              {/* Edit Icon for Inline Variant */}
+              {variant === 'inline' && (
+                <div
+                  className={`flex items-center gap-2 shrink-0 ${type === 'textarea' ? 'mt-0.5' : ''}`}
+                >
                   <Edit3
                     aria-hidden="true"
                     className="
@@ -220,16 +248,16 @@ const SmartField = memo(
                     group-focus/field:opacity-100
                   "
                   />
-                )}
 
-                <InheritanceIndicator
-                  inheritanceSource={inheritanceSource}
-                  isOverridden={isOverridden}
-                  onReset={onReset}
-                  isEditing={isEditing}
-                  isMasterBook={isMasterBook}
-                />
-              </div>
+                  <InheritanceIndicator
+                    inheritanceSource={inheritanceSource}
+                    isOverridden={isOverridden}
+                    onReset={onReset}
+                    isEditing={isEditing}
+                    isMasterBook={isMasterBook}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
