@@ -61,7 +61,7 @@ export default function ProjectMenu({ onEdit, onDelete }: ProjectMenuProps) {
   ];
 
   return (
-    <div className="absolute top-3 right-3 z-30 pointer-events-auto">
+    <div className="absolute top-3 right-3 z-50 pointer-events-auto">
       {/* Three-dot Toggle Button */}
       <button
         aria-label="More options"
@@ -70,7 +70,7 @@ export default function ProjectMenu({ onEdit, onDelete }: ProjectMenuProps) {
           e.stopPropagation();
           setShowMenu(!showMenu);
         }}
-        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 w-8 h-8 flex flex-col items-center justify-center gap-0.5 rounded-lg bg-white/80 hover:bg-white backdrop-blur-sm text-slate-500 hover:text-[#9333ea] shadow-sm transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500"
+        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 w-8 h-8 flex flex-col items-center justify-center gap-0.5 rounded-lg bg-white hover:bg-slate-50 focus:bg-slate-50 backdrop-blur-sm text-slate-500 hover:text-[#9333ea] focus:text-[#9333ea] shadow-sm transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500"
       >
         {[1, 2, 3].map((i) => (
           <span key={i} className="w-1 h-1 bg-current rounded-full" />

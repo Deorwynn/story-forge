@@ -86,6 +86,7 @@ function App() {
         // Ensure volumeNumber is 1 if it's a standalone to prevent index errors
         volumeNumber:
           activeProject.type === 'standalone' ? 1 : activeProject.volumeNumber,
+        coverPath: activeProject.coverPath,
       };
 
       localStorage.setItem(
@@ -224,6 +225,7 @@ function App() {
         // 6. APPLY PROJECT STATE
         setActiveProject({
           ...rawData,
+          coverPath: rawData.cover_path || rawData.coverPath,
           books: sanitizedBooks,
           volumeNumber: finalVolume,
           name:
@@ -345,6 +347,7 @@ function App() {
 
       setActiveProject({
         ...baseProject,
+        coverPath: baseProject.coverPath || (baseProject as any).cover_path,
         books: sanitizedBooks,
         volumeNumber: targetVolume,
         name: finalName,

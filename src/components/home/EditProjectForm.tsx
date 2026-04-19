@@ -20,6 +20,7 @@ import Button from '../shared/Button';
 import VolumeManager from './VolumeManager';
 import ConfirmModal from '../shared/ConfirmModal';
 import GenreSelector from './GenreSelector';
+import ImageUpload from '../shared/ImageUpload';
 import { invoke } from '@tauri-apps/api/core';
 
 export const GENRES = [
@@ -62,6 +63,11 @@ export default function EditProjectForm({
   const [selectedGenres, setSelectedGenres] = useState<string[]>(
     Array.isArray(project.genres) ? project.genres : []
   );
+  const [coverPath, setCoverPath] = useState<string | null>(
+    project.coverPath || null
+  );
+  const [previewKey, setPreviewKey] = useState(Date.now());
+  const [imageWasUploaded, setImageWasUploaded] = useState(false);
 
   const [bookTitles, setBookTitles] = useState<string[]>(
     project.books?.map((b) => b.title) || [project.name]
@@ -86,12 +92,13 @@ export default function EditProjectForm({
     setIsSaving(true);
     try {
       const isStandalone = type === 'standalone';
+      const now = Math.floor(Date.now() / 1000);
 
       // Get the correct Book ID
       const survivingBook = currentBooks[0] || project.books[0];
 
       const updatedPayload = {
-        ...project, // Keep existing fields
+        ...project,
         name: isStandalone ? name : project.name,
         series_name: isStandalone ? '' : name,
         project_type: type,
@@ -100,8 +107,10 @@ export default function EditProjectForm({
         genres: selectedGenres,
         pov: pov,
         description: description,
+        cover_path: coverPath || null,
       };
 
+      console.log('SAVE CHECK - coverPath state is:', coverPath);
       // Update the main Project record
       await invoke('update_project', updatedPayload);
 
@@ -164,12 +173,13 @@ export default function EditProjectForm({
         genres: selectedGenres,
         pov: pov,
         description: description,
+        coverPath: coverPath,
         // If standalone, name is the input. If series, name is the specific volume's title.
         name: isStandalone
           ? name
           : updatedBooksForState[project.volumeNumber - 1]?.title || name,
         createdAt: project.createdAt,
-        updatedAt: Math.floor(Date.now() / 1000),
+        updatedAt: now,
       };
 
       onConfirm(finalProjectState as Project);
@@ -226,6 +236,7 @@ export default function EditProjectForm({
             description,
             book_count: 1,
             volume_number: 1,
+            coverPath,
           };
 
           await invoke('update_project', updatePayload);
@@ -287,7 +298,9 @@ export default function EditProjectForm({
     pov !== (project.pov || 'First Person') ||
     JSON.stringify(selectedGenres) !== JSON.stringify(project.genres || []) ||
     JSON.stringify(bookTitles) !==
-      JSON.stringify(project.books?.map((b) => b.title) || []);
+      JSON.stringify(project.books?.map((b) => b.title) || []) ||
+    coverPath !== (project.coverPath || null) ||
+    imageWasUploaded;
 
   // Intercept the close request
   const handleCloseAttempt = () => {
@@ -345,14 +358,18 @@ export default function EditProjectForm({
                       <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
                         Project Cover
                       </label>
-                      <div className="relative h-32 w-full bg-slate-100 rounded-2xl border-2 border-dashed border-slate-200 overflow-hidden group">
-                        <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 group-hover:bg-slate-200/50 transition-colors cursor-pointer">
-                          <Building2 size={24} className="mb-2" />
-                          <span className="text-[10px] font-bold uppercase">
-                            Change Header Image
-                          </span>
-                        </div>
-                      </div>
+                      <ImageUpload
+                        key={previewKey}
+                        collection="projects"
+                        entityId={project.id}
+                        currentPath={coverPath}
+                        onUploadSuccess={(newPath: string) => {
+                          setCoverPath(newPath);
+                          setPreviewKey(Date.now());
+                          setImageWasUploaded(true);
+                          console.log('New cover path set:', newPath);
+                        }}
+                      />
                     </div>
 
                     {/* TITLE SECTION */}
@@ -653,7 +670,16 @@ export default function EditProjectForm({
           confirmLabel="Discard Changes"
           cancelLabel="Stay"
           variant="danger"
-          onConfirm={onCancel}
+          onConfirm={() => {
+            // 1. Reset the cover path to what it was in the project prop
+            setCoverPath(project.coverPath || null);
+            // 2. Clear the "dirty" flag
+            setImageWasUploaded(false);
+            // 3. Reset the preview key so ImageUpload re-renders the old path
+            setPreviewKey(Date.now());
+            // 4. Finally, close the form
+            onCancel();
+          }}
           onCancel={() => setShowDiscardConfirm(false)}
         />
       )}

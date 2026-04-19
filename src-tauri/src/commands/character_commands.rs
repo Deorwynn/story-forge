@@ -1,8 +1,8 @@
-use rusqlite::{params, Connection };
-use uuid::Uuid;
-use chrono::Utc;
+use crate::models::character::{Character, CharacterMetadata, TemporalField};
 use crate::AppState;
-use crate::models::character::{Character, TemporalField, CharacterMetadata};
+use chrono::Utc;
+use rusqlite::{params, Connection};
+use uuid::Uuid;
 
 #[tauri::command]
 pub async fn create_character(
@@ -74,29 +74,31 @@ pub async fn get_characters(
                   FROM characters WHERE project_id = ?1")
         .map_err(|e| e.to_string())?;
 
-    let character_iter = stmt.query_map(params![project_id], |row| {
-        let metadata_str: String = row.get(8)?; 
-        let overrides_str: Option<String> = row.get(9)?;
-        
-        let metadata: CharacterMetadata = serde_json::from_str(&metadata_str)
-            .unwrap_or_else(|_| CharacterMetadata::default());
+    let character_iter = stmt
+        .query_map(params![project_id], |row| {
+            let metadata_str: String = row.get(8)?;
+            let overrides_str: Option<String> = row.get(9)?;
 
-        let book_overrides: Option<serde_json::Value> = overrides_str
-            .and_then(|s| serde_json::from_str(&s).ok());
+            let metadata: CharacterMetadata = serde_json::from_str(&metadata_str)
+                .unwrap_or_else(|_| CharacterMetadata::default());
 
-        Ok(Character {
-            id: row.get(0)?,
-            project_id: row.get(1)?,
-            book_id: row.get(2)?,
-            display_name: row.get(3)?,
-            role: row.get(4)?,
-            portrait_path: row.get(5)?,
-            is_global: row.get(6)?,
-            last_modified: row.get(7)?,
-            metadata,
-            book_overrides,
+            let book_overrides: Option<serde_json::Value> =
+                overrides_str.and_then(|s| serde_json::from_str(&s).ok());
+
+            Ok(Character {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                book_id: row.get(2)?,
+                display_name: row.get(3)?,
+                role: row.get(4)?,
+                portrait_path: row.get(5)?,
+                is_global: row.get(6)?,
+                last_modified: row.get(7)?,
+                metadata,
+                book_overrides,
+            })
         })
-    }).map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     let mut results = Vec::new();
     for char in character_iter {
@@ -106,10 +108,7 @@ pub async fn get_characters(
 }
 
 #[tauri::command]
-pub async fn get_character(
-    app_handle: tauri::AppHandle,
-    id: String,
-) -> Result<Character, String> {
+pub async fn get_character(app_handle: tauri::AppHandle, id: String) -> Result<Character, String> {
     let path = crate::get_db_path(&app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
@@ -118,28 +117,30 @@ pub async fn get_character(
                   FROM characters WHERE id = ?1")
         .map_err(|e| e.to_string())?;
 
-    let character = stmt.query_row(params![id], |row| {
-        let metadata_str: String = row.get(8)?;
-        let metadata: CharacterMetadata = serde_json::from_str(&metadata_str)
-            .unwrap_or_else(|_| CharacterMetadata::default());
-            
-        let overrides_str: Option<String> = row.get(9)?;
-        let book_overrides: Option<serde_json::Value> = overrides_str
-            .and_then(|s| serde_json::from_str(&s).ok());
+    let character = stmt
+        .query_row(params![id], |row| {
+            let metadata_str: String = row.get(8)?;
+            let metadata: CharacterMetadata = serde_json::from_str(&metadata_str)
+                .unwrap_or_else(|_| CharacterMetadata::default());
 
-        Ok(Character {
-            id: row.get(0)?,
-            project_id: row.get(1)?,
-            book_id: row.get(2)?,
-            display_name: row.get(3)?,
-            role: row.get(4)?,
-            portrait_path: row.get(5)?,
-            is_global: row.get(6)?,
-            last_modified: row.get(7)?,
-            metadata,
-            book_overrides,
+            let overrides_str: Option<String> = row.get(9)?;
+            let book_overrides: Option<serde_json::Value> =
+                overrides_str.and_then(|s| serde_json::from_str(&s).ok());
+
+            Ok(Character {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                book_id: row.get(2)?,
+                display_name: row.get(3)?,
+                role: row.get(4)?,
+                portrait_path: row.get(5)?,
+                is_global: row.get(6)?,
+                last_modified: row.get(7)?,
+                metadata,
+                book_overrides,
+            })
         })
-    }).map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     Ok(character)
 }
@@ -147,14 +148,19 @@ pub async fn get_character(
 #[tauri::command]
 pub async fn update_character(
     state: tauri::State<'_, AppState>,
-    mut character: Character, 
+    mut character: Character,
 ) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let now = Utc::now().timestamp();
 
     // 1. Logic Layer: Derive display_name from metadata struct fields
     let first = character.metadata.first_name.trim();
-    let middle = character.metadata.middle_name.as_deref().unwrap_or("").trim();
+    let middle = character
+        .metadata
+        .middle_name
+        .as_deref()
+        .unwrap_or("")
+        .trim();
     let last = character.metadata.last_name.as_deref().unwrap_or("").trim();
 
     let name_parts: Vec<&str> = vec![first, middle, last]
@@ -167,7 +173,8 @@ pub async fn update_character(
     }
 
     let metadata_json = serde_json::to_string(&character.metadata).map_err(|e| e.to_string())?;
-    let overrides_json = serde_json::to_string(&character.book_overrides).map_err(|e| e.to_string())?;
+    let overrides_json =
+        serde_json::to_string(&character.book_overrides).map_err(|e| e.to_string())?;
 
     db.execute(
         "UPDATE characters SET 
@@ -191,16 +198,32 @@ pub async fn update_character(
             overrides_json,
             character.id
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn update_character_portrait(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    portrait_path: Option<String>,
+) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    let now = chrono::Utc::now().timestamp();
+
+    conn.execute(
+        "UPDATE characters SET portrait_path = ?1, last_modified = ?2 WHERE id = ?3",
+        (&portrait_path, &now, &id),
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn delete_character(
-    app_handle: tauri::AppHandle,
-    id: String,
-) -> Result<(), String> {
+pub async fn delete_character(app_handle: tauri::AppHandle, id: String) -> Result<(), String> {
     let path = crate::get_db_path(&app_handle)?;
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
 
@@ -221,7 +244,8 @@ pub async fn globalize_project_characters(
     conn.execute(
         "UPDATE characters SET book_id = NULL WHERE project_id = ?1",
         params![project_id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }

@@ -1,3 +1,6 @@
+import { useState, useEffect } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { appDataDir, join } from '@tauri-apps/api/path';
 import { Project } from '../../types/project';
 import ProjectMenu from './ProjectMenu';
 
@@ -14,6 +17,23 @@ export default function ProjectCard({
   onDelete,
   onEdit,
 }: ProjectCardProps) {
+  const [displayUrl, setDisplayUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadCover = async () => {
+      if (project.coverPath) {
+        const appData = await appDataDir();
+        const fullPath = await join(appData, 'assets', project.coverPath);
+        const assetUrl = convertFileSrc(fullPath);
+
+        setDisplayUrl(`${assetUrl}?t=${project.updatedAt}`);
+      } else {
+        setDisplayUrl(null);
+      }
+    };
+    loadCover();
+  }, [project.coverPath, project.updatedAt]);
+
   const formatDate = (timestamp: number) => {
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
@@ -33,36 +53,67 @@ export default function ProjectCard({
       hover:shadow-[0_12px_24px_rgba(15,23,42,0.08),0_4px_16px_rgba(147,51,234,0.12)]
     `}
     >
-      {/* Animated Left Border */}
-      <div className="absolute top-0 left-0 w-1 h-0 group-hover:h-full group-focus-within:h-full bg-[#9333ea] transition-all duration-300 z-40" />
-
-      {/* Global Click Target */}
+      {/* 2. Global Click Target */}
       <button
         onClick={() => onSelect(project)}
-        className="absolute inset-0 w-full h-full cursor-pointer z-10 focus:outline-none"
+        className="absolute inset-0 w-full h-full cursor-pointer z-40 focus:outline-none"
         aria-label={`Open ${project.name}`}
       />
 
-      {/* Integrated Cover & Title Area */}
-      <div className="relative h-32 bg-slate-200 border-b border-slate-100 group-hover:bg-slate-300 transition-colors flex flex-col justify-end">
-        <div className="absolute inset-0 z-0 bg-gradient-to-t from-white via-white/40 to-transparent" />
+      {/* Animated Left Border */}
+      <div className="absolute top-0 left-0 w-1 h-0 group-hover:h-full group-focus-within:h-full bg-[#9333ea] transition-all duration-300 z-40" />
 
-        <div className="relative z-20 px-6 pb-3 pointer-events-none">
-          <h3 className="text-xl font-bold text-slate-900 group-hover:text-[#9333ea] transition-colors line-clamp-1 drop-shadow-sm">
+      {/* Integrated Cover & Title Area */}
+      <div className="relative h-32 bg-slate-200 border-b border-slate-200 group">
+        {/* 1. Background Image & Scrim */}
+        <div className="absolute inset-0 overflow-hidden">
+          {displayUrl ? (
+            <>
+              <img
+                src={displayUrl}
+                className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 scale-[1.03] group-hover:scale-110 will-change-transform"
+              />
+              <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+            </>
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-100 to-slate-200" />
+          )}
+        </div>
+
+        {/* 3. The Menu */}
+        <div className="absolute top-3 right-3 z-50">
+          <ProjectMenu
+            onEdit={() => onEdit(project)}
+            onDelete={() => onDelete(project.id)}
+          />
+        </div>
+
+        {/* 4. Title & Subtitle */}
+        <div className="absolute bottom-0 left-0 w-full z-30 px-6 pb-3 pointer-events-none">
+          <h3
+            className={`text-xl font-bold transition-all duration-300 line-clamp-1 ${
+              displayUrl ? 'text-white' : 'text-slate-900'
+            }`}
+            style={{
+              textShadow: displayUrl
+                ? '0 2px 10px rgba(88, 28, 135, 0.8), 0 0 20px rgba(147, 51, 234, 0.4)'
+                : 'none',
+            }}
+          >
             {project.type === 'series' ? project.seriesName : project.name}
           </h3>
-          <p className="text-[10px] font-bold text-purple-600 uppercase tracking-wider mt-0.5 group-hover:text-purple-700 transition-colors drop-shadow-sm">
+          <p
+            className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 transition-colors drop-shadow-md ${
+              displayUrl
+                ? 'text-purple-300 group-hover:text-purple-200'
+                : 'text-purple-600 group-hover:text-purple-700'
+            }`}
+          >
             {project.type === 'series'
               ? `Series (${project.bookCount} ${project.bookCount === 1 ? 'volume' : 'volumes'})`
               : 'Standalone Novel'}
           </p>
         </div>
-
-        {/* Vertical Menu */}
-        <ProjectMenu
-          onEdit={() => onEdit(project)}
-          onDelete={() => onDelete(project.id)}
-        />
       </div>
 
       {/* Description & Metadata Area */}
