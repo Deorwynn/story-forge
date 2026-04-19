@@ -29,6 +29,7 @@ export interface Project {
   cloudSyncId?: string;
   genres: string[];
   description: string;
+  coverPath?: string;
   books: Book[];
   pov?: string;
 }

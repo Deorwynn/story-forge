@@ -593,19 +593,41 @@ async fn get_book_documents(
 
 #[tauri::command(rename_all = "snake_case")]
 async fn update_project(
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     id: String,
     name: String,
     series_name: String,
     volume_number: i32,
     description: String,
+    cover_path: Option<String>,
     genres: Vec<String>,
     project_type: String,
     pov: String,
 ) -> Result<(), String> {
+    println!("Updating project {} with cover_path: {:?}", id, cover_path);
     let conn = state.db.lock().unwrap();
 
-    // Convert the vector into a JSON string for storage
+    // --- 1. CLEANUP LOGIC: Get the old path before updating ---
+    let old_path: Option<String> = conn
+        .query_row(
+            "SELECT cover_path FROM projects WHERE id = ?1",
+            [&id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .flatten();
+
+    // If the path has changed, delete the old file
+    if let Some(old) = old_path {
+        if Some(&old) != cover_path.as_ref() {
+            // We ignore errors here so the DB update still happens even if file deletion fails
+            let _ = commands::media::internal_delete_asset_file(&app_handle, &old);
+        }
+    }
+
+    // --- 2. EXISTING DB UPDATE ---
     let genres_json = serde_json::to_string(&genres).unwrap_or_else(|_| "[]".to_string());
 
     conn.execute(
@@ -617,8 +639,9 @@ async fn update_project(
          genres = ?5, 
          project_type = ?6, 
          pov = ?7, 
+         cover_path = ?8, -- 2. Add the column here
          updated_at = strftime('%s', 'now')
-         WHERE id = ?8",
+         WHERE id = ?9",
         (
             &name,
             &series_name,
@@ -627,6 +650,7 @@ async fn update_project(
             &genres_json,
             &project_type,
             &pov,
+            &cover_path,
             &id,
         ),
     )
@@ -1180,6 +1204,7 @@ pub fn run() {
             commands::character_commands::delete_character,
             commands::character_commands::globalize_project_characters,
             commands::media::save_media_file,
+            commands::media::delete_asset_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

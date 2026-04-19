@@ -7,6 +7,7 @@ import { Project } from '../types/project';
 export function mapRawProject(p: any): Project {
   return {
     id: p.id,
+    coverPath: p.cover_path || p.coverPath,
     name: p.name || 'Untitled Story',
     seriesName: p.series_name || p.seriesName || '',
     volumeNumber: p.volume_number || p.volumeNumber || 1,
