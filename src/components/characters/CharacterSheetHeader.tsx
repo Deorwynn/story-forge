@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Camera, Users, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { ImageUpload } from '../shared/ImageUpload';
 
 interface HeaderProps {
   metadata: any;
@@ -10,6 +12,8 @@ interface HeaderProps {
     last: string,
     derivedFull: string
   ) => void;
+  onUpdatePortrait: (newPath: string) => void;
+  portraitPath?: string | null;
 }
 
 const AutoInput = ({
@@ -83,7 +87,10 @@ export default function CharacterSheetHeader({
   metadata,
   role,
   onSaveNameParts,
+  onUpdatePortrait,
+  portraitPath,
 }: HeaderProps) {
+  console.log('Current Metadata Object:', metadata);
   const [first, setFirst] = useState(metadata.first_name || '');
   const [middle, setMiddle] = useState(metadata.middle_name || '');
   const [last, setLast] = useState(metadata.last_name || '');
@@ -170,31 +177,45 @@ export default function CharacterSheetHeader({
   return (
     <div
       ref={containerRef}
-      className="flex flex-col sm:flex-row items-start gap-8 mb-12"
-      onFocus={() => {
-        setIsEditing(true);
-        setIsClosing(false);
-      }}
-      onBlur={handleBlur}
+      className="flex flex-col sm:flex-row gap-1 sm:gap-8 mb-5"
     >
-      {/* PORTRAIT PLACEHOLDER */}
-      <div className="relative group">
-        <div className="w-32 h-32 rounded-full bg-slate-100 border-4 border-white shadow-sm overflow-hidden flex items-center justify-center transition-all group-hover:border-purple-100">
-          <Users className="w-12 h-12 text-slate-300 group-hover:text-purple-300 transition-colors" />
+      {/* LEFT COLUMN: PORTRAIT + ROLE */}
+      <div className="flex flex-col items-center gap-3 shrink-0">
+        <div className="relative w-32">
+          <ImageUpload
+            variant="portrait"
+            collection="characters"
+            entityId={metadata.id}
+            currentPath={portraitPath}
+            onUploadSuccess={async (newPath) => {
+              if (!metadata.id) return;
 
-          {/* Overlay for "Upload" */}
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition-all cursor-pointer">
-            <Camera className="text-white opacity-0 group-hover:opacity-100 w-6 h-6 transition-opacity" />
-          </div>
+              await invoke('update_character_portrait', {
+                id: metadata.id,
+                path: newPath || null,
+              });
+
+              // Update the parent state immediately
+              onUpdatePortrait(newPath);
+            }}
+          />
+        </div>
+
+        {/* ROLE PILL */}
+        <div className="inline-block px-3 py-1 rounded-full bg-purple-50 text-purple-600 text-[10px] font-bold uppercase tracking-widest">
+          {role}
         </div>
       </div>
 
-      {/* NAME & ROLE INFO */}
-      <div className="flex-1 w-full">
-        <div className="inline-block px-3 py-1 rounded-full bg-purple-50 text-purple-600 text-[10px] font-bold uppercase tracking-widest mb-1">
-          {role}
-        </div>
-
+      {/* RIGHT COLUMN: NAME & DESCRIPTION */}
+      <div
+        className="flex-1 w-full"
+        onFocus={() => {
+          setIsEditing(true);
+          setIsClosing(false);
+        }}
+        onBlur={handleBlur}
+      >
         <div className="flex flex-wrap items-end gap-x-2 gap-y-4 min-h-[64px]">
           <div className={transitionClass}>
             <AutoInput

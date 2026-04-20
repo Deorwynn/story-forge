@@ -39,6 +39,7 @@ export interface Character {
     clothing_style?: TemporalField<string>;
     posture_gait?: TemporalField<string>;
     color_palette?: TemporalField<string>;
+    portrait_path?: TemporalField<string>;
   };
   description?: string;
   traits?: string[];

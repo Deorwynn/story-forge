@@ -24,11 +24,13 @@ pub struct TemporalField<T> {
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct CharacterMetadata {
+    pub id: Option<String>,
     pub first_name: String,
     pub middle_name: Option<String>,
     pub last_name: Option<String>,
     pub nickname: Option<String>,
     pub languages: Vec<String>,
+    pub portrait_path: Option<String>,
     pub gender: Option<TemporalField<String>>,
     pub occupation: Option<TemporalField<String>>,
     pub race: Option<TemporalField<String>>,
