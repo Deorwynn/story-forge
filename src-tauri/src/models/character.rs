@@ -22,6 +22,14 @@ pub struct TemporalField<T> {
     pub book_overrides: HashMap<String, T>, // Key is book_id
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct PortraitFrame {
+    pub path: String,
+    pub zoom: f64,
+    pub offset_x: f64,
+    pub offset_y: f64,
+}
+
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct CharacterMetadata {
     pub id: Option<String>,
@@ -30,7 +38,7 @@ pub struct CharacterMetadata {
     pub last_name: Option<String>,
     pub nickname: Option<String>,
     pub languages: Vec<String>,
-    pub portrait_path: Option<String>,
+    pub portrait_data: Option<TemporalField<PortraitFrame>>,
     pub gender: Option<TemporalField<String>>,
     pub occupation: Option<TemporalField<String>>,
     pub race: Option<TemporalField<String>>,
