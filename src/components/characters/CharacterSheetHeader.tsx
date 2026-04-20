@@ -90,7 +90,6 @@ export default function CharacterSheetHeader({
   onUpdatePortrait,
   portraitPath,
 }: HeaderProps) {
-  console.log('Current Metadata Object:', metadata);
   const [first, setFirst] = useState(metadata.first_name || '');
   const [middle, setMiddle] = useState(metadata.middle_name || '');
   const [last, setLast] = useState(metadata.last_name || '');

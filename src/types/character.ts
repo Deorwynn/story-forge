@@ -1,5 +1,12 @@
 export type MortalityType = 'mortal' | 'ageless' | 'immortal';
 
+export interface PortraitFrame {
+  path: string;
+  zoom: number;
+  offset_x: number;
+  offset_y: number;
+}
+
 export interface TemporalField<T> {
   global_value: T;
   book_overrides: Record<string, T>;
@@ -20,7 +27,7 @@ export interface Character {
     middle_name?: string;
     last_name?: string;
     nickname?: string;
-    gender?: string;
+    gender?: TemporalField<string>;
     languages: string[];
     race: TemporalField<string>;
     occupation: TemporalField<string>;
@@ -39,7 +46,7 @@ export interface Character {
     clothing_style?: TemporalField<string>;
     posture_gait?: TemporalField<string>;
     color_palette?: TemporalField<string>;
-    portrait_path?: TemporalField<string>;
+    portrait_data?: TemporalField<PortraitFrame>;
   };
   description?: string;
   traits?: string[];

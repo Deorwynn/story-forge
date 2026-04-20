@@ -1,4 +1,4 @@
-use crate::models::character::{Character, CharacterMetadata, TemporalField};
+use crate::models::character::{Character, CharacterMetadata, TemporalField, PortraitFrame};
 use crate::AppState;
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -120,14 +120,12 @@ pub async fn get_character(app_handle: tauri::AppHandle, id: String) -> Result<C
     let character = stmt
         .query_row(params![id], |row| {
             let character_id: String = row.get(0)?;
-            let portrait_path: Option<String> = row.get(5)?;
             let metadata_str: String = row.get(8)?;
             let mut metadata: CharacterMetadata = serde_json::from_str(&metadata_str)
                 .unwrap_or_else(|_| CharacterMetadata::default());
 
             // INJECT THE ID: This ensures metadata.id is never undefined in React
             metadata.id = Some(character_id.clone());
-            metadata.portrait_path = portrait_path.clone();
 
             let overrides_str: Option<String> = row.get(9)?;
             let book_overrides: Option<serde_json::Value> =
@@ -216,31 +214,55 @@ pub async fn update_character_portrait(
     state: tauri::State<'_, AppState>,
     id: String,
     path: Option<String>,
+    book_id: Option<String>,
 ) -> Result<(), String> {
     let conn = state.db.lock().unwrap();
 
-    // 1. Find the old portrait path for deletion
-    let old_path: Option<String> = conn
+    // 1. Get current metadata and old path cache
+    let (old_path, metadata_str): (Option<String>, String) = conn
         .query_row(
-            "SELECT portrait_path FROM characters WHERE id = ?1",
+            "SELECT portrait_path, metadata FROM characters WHERE id = ?1",
             [&id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
-        .optional()
-        .map_err(|e| e.to_string())?
-        .flatten();
+        .map_err(|e| e.to_string())?;
 
-    // 2. If it's different, delete the old file
+    // 2. Cleanup old file if it changed
     if let Some(old) = old_path {
         if Some(&old) != path.as_ref() {
             let _ = crate::commands::media::internal_delete_asset_file(&app_handle, &old);
         }
     }
 
-    // 3. Update the database
+    // 3. Update the Temporal Metadata
+    let mut metadata: CharacterMetadata = serde_json::from_str(&metadata_str).unwrap_or_default();
+    
+    // Get or create the temporal container
+    let mut temporal_data = metadata.portrait_data.unwrap_or_default();
+
+    // Create the new frame with reset framing values
+    let new_frame = PortraitFrame {
+        path: path.clone().unwrap_or_default(),
+        zoom: 1.0,
+        offset_x: 50.0,
+        offset_y: 50.0,
+    };
+
+    // Apply to the specific book or global
+    if let Some(bid) = book_id {
+        temporal_data.book_overrides.insert(bid, new_frame);
+    } else {
+        temporal_data.global_value = new_frame;
+    }
+
+    metadata.portrait_data = Some(temporal_data);
+    
+    let updated_metadata_json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
+
+    // 4. Final Database Update
     conn.execute(
-        "UPDATE characters SET portrait_path = ?1, last_modified = ?2 WHERE id = ?3",
-        (&path, chrono::Utc::now().timestamp(), &id),
+        "UPDATE characters SET portrait_path = ?1, metadata = ?2, last_modified = ?3 WHERE id = ?4",
+        (&path, updated_metadata_json, chrono::Utc::now().timestamp(), &id),
     ).map_err(|e| e.to_string())?;
 
     Ok(())
