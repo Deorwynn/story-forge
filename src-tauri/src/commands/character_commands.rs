@@ -1,7 +1,7 @@
 use crate::models::character::{Character, CharacterMetadata, TemporalField};
 use crate::AppState;
 use chrono::Utc;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use uuid::Uuid;
 
 #[tauri::command]
@@ -119,16 +119,22 @@ pub async fn get_character(app_handle: tauri::AppHandle, id: String) -> Result<C
 
     let character = stmt
         .query_row(params![id], |row| {
+            let character_id: String = row.get(0)?;
+            let portrait_path: Option<String> = row.get(5)?;
             let metadata_str: String = row.get(8)?;
-            let metadata: CharacterMetadata = serde_json::from_str(&metadata_str)
+            let mut metadata: CharacterMetadata = serde_json::from_str(&metadata_str)
                 .unwrap_or_else(|_| CharacterMetadata::default());
+
+            // INJECT THE ID: This ensures metadata.id is never undefined in React
+            metadata.id = Some(character_id.clone());
+            metadata.portrait_path = portrait_path.clone();
 
             let overrides_str: Option<String> = row.get(9)?;
             let book_overrides: Option<serde_json::Value> =
                 overrides_str.and_then(|s| serde_json::from_str(&s).ok());
 
             Ok(Character {
-                id: row.get(0)?,
+                id: character_id,
                 project_id: row.get(1)?,
                 book_id: row.get(2)?,
                 display_name: row.get(3)?,
@@ -206,28 +212,66 @@ pub async fn update_character(
 
 #[tauri::command(rename_all = "snake_case")]
 pub async fn update_character_portrait(
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     id: String,
-    portrait_path: Option<String>,
+    path: Option<String>,
 ) -> Result<(), String> {
     let conn = state.db.lock().unwrap();
-    let now = chrono::Utc::now().timestamp();
 
+    // 1. Find the old portrait path for deletion
+    let old_path: Option<String> = conn
+        .query_row(
+            "SELECT portrait_path FROM characters WHERE id = ?1",
+            [&id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .flatten();
+
+    // 2. If it's different, delete the old file
+    if let Some(old) = old_path {
+        if Some(&old) != path.as_ref() {
+            let _ = crate::commands::media::internal_delete_asset_file(&app_handle, &old);
+        }
+    }
+
+    // 3. Update the database
     conn.execute(
         "UPDATE characters SET portrait_path = ?1, last_modified = ?2 WHERE id = ?3",
-        (&portrait_path, &now, &id),
-    )
-    .map_err(|e| e.to_string())?;
+        (&path, chrono::Utc::now().timestamp(), &id),
+    ).map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn delete_character(app_handle: tauri::AppHandle, id: String) -> Result<(), String> {
-    let path = crate::get_db_path(&app_handle)?;
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+pub async fn delete_character(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
 
-    conn.execute("DELETE FROM characters WHERE id = ?1", params![id])
+    // 1. Get the portrait path before we delete the DB record
+    let portrait_path: Option<String> = conn
+        .query_row(
+            "SELECT portrait_path FROM characters WHERE id = ?1",
+            [&id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .flatten();
+
+    // 2. Delete the portrait file if it exists
+if let Some(path) = portrait_path {
+    let _ = crate::commands::media::internal_delete_asset_file(&app_handle, &path);
+}
+
+    // 3. Delete from DB
+    conn.execute("DELETE FROM characters WHERE id = ?1", [&id])
         .map_err(|e| e.to_string())?;
 
     Ok(())

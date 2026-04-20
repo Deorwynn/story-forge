@@ -11,6 +11,7 @@ interface ImageUploadProps {
   entityId: string;
   onUploadSuccess: (newPath: string) => void;
   label?: string;
+  variant?: 'square' | 'portrait';
 }
 
 export const ImageUpload = ({
@@ -19,6 +20,7 @@ export const ImageUpload = ({
   entityId,
   onUploadSuccess,
   label = 'Upload Image',
+  variant = 'square',
 }: ImageUploadProps) => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -41,6 +43,8 @@ export const ImageUpload = ({
   };
 
   const handleSelectImage = async () => {
+    if (!entityId) return;
+
     try {
       const selected = await open({
         multiple: false,
@@ -63,6 +67,10 @@ export const ImageUpload = ({
         });
 
         onUploadSuccess(savedRelativePath);
+
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
       }
     } catch (error) {
       console.error('Failed to upload image:', error);
@@ -72,29 +80,24 @@ export const ImageUpload = ({
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      {label && (
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-          {label}
-        </span>
-      )}
-
-      <div className="relative group">
+    <div className="flex flex-col gap-3 text-center">
+      <div
+        className={`relative group ${variant === 'portrait' ? 'w-32' : 'w-full'}`}
+      >
         <button
           type="button"
           onClick={handleSelectImage}
-          aria-label={
-            previewUrl ? 'Change project cover' : 'Upload project cover'
-          }
+          aria-label={previewUrl ? 'Change image' : 'Upload image'}
           className={`
-            relative w-full h-40 rounded-2xl transition-all outline-none overflow-hidden
+            relative w-full transition-all outline-none overflow-hidden
             flex flex-col items-center justify-center border-2 border-dashed cursor-pointer
             ${
-              previewUrl
-                ? 'border-transparent bg-slate-400'
-                : 'border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300'
+              variant === 'portrait'
+                ? 'aspect-[3/4] rounded-xl' // Character Portrait Shape
+                : 'h-40 rounded-2xl' // Project Cover Shape
             }
-            focus-visible:ring-2 focus-visible:ring-[#9333ea] focus-visible:ring-offset-2
+            ${previewUrl ? 'border-transparent bg-purple-300 hover:bg-purple-400' : 'border-slate-200 bg-slate-50'}
+            focus-visible:ring-2 focus-visible:ring-[#9333ea]
           `}
         >
           {previewUrl ? (
@@ -120,12 +123,14 @@ export const ImageUpload = ({
             </>
           ) : (
             <div className="flex flex-col items-center gap-2">
-              <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm text-slate-400 group-hover:text-[#9333ea] transition-colors">
-                <Plus size={20} />
+              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm text-slate-400 group-hover:text-[#9333ea] transition-colors">
+                <Plus size={18} />
               </div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">
-                Click to browse
-              </p>
+              {label && !previewUrl && (
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">
+                  {label}
+                </span>
+              )}
             </div>
           )}
 
@@ -144,10 +149,13 @@ export const ImageUpload = ({
               e.stopPropagation();
               onUploadSuccess('');
             }}
-            title="Remove image"
-            className="absolute top-2 right-2 p-2 bg-white text-red-500 rounded-full shadow-md hover:bg-red-50 hover:scale-110 transition-all border border-red-100 z-20 focus:ring-2 focus:ring-red-500 outline-none cursor-pointer"
+            className="absolute top-2 right-2 p-1.5 bg-white text-red-500 rounded-full shadow-lg 
+            border border-slate-100 transition-all z-20 cursor-pointer
+            opacity-0 group-hover:opacity-100 group-focus-within:opacity-100
+            hover:bg-red-50 hover:scale-110 focus:ring-2 focus:ring-red-500 outline-none"
+            aria-label="Remove image"
           >
-            <Trash2 size={16} />
+            <Trash2 size={14} />
           </button>
         )}
       </div>

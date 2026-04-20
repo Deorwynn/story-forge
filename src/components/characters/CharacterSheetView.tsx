@@ -48,6 +48,7 @@ export default function CharacterSheetView({
               metadata: data.metadata,
               role: data.role,
               book_overrides: data.book_overrides,
+              portrait_path: data.portrait_path,
             })
           );
           setIsLoading(false);
@@ -108,6 +109,7 @@ export default function CharacterSheetView({
       metadata: localData.metadata,
       role: localData.role,
       book_overrides: localData.book_overrides,
+      portrait_path: localData.portrait_path,
     });
 
     // If the current text matches what we last saved, do nothing
@@ -214,6 +216,13 @@ export default function CharacterSheetView({
     });
   };
 
+  const handlePortraitUpdate = (newPath: string) => {
+    setLocalData((prev: any) => ({
+      ...prev,
+      portrait_path: newPath,
+    }));
+  };
+
   const handleNamePartUpdate = (
     first: string,
     middle: string,
@@ -294,7 +303,9 @@ export default function CharacterSheetView({
         <CharacterSheetHeader
           metadata={localData.metadata}
           role={localData.role}
+          portraitPath={localData.portrait_path}
           onSaveNameParts={handleNamePartUpdate}
+          onUpdatePortrait={handlePortraitUpdate}
         />
 
         <CharacterSheetIdentity
