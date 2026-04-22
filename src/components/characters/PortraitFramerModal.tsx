@@ -86,7 +86,7 @@ export default function PortraitFramerModal({
             <img
               src={imageSrc}
               alt="Framer"
-              className="w-full h-full object-cover select-none pointer-events-none"
+              className="w-full h-full object-contain select-none pointer-events-none"
               style={{
                 transform: `
                   scale(${zoom}) 

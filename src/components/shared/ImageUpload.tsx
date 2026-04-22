@@ -132,7 +132,7 @@ export const ImageUpload = ({
                   transformOrigin: 'center center',
                   willChange: 'transform',
                 }}
-                className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity img-optimize"
+                className="w-full h-full object-contain opacity-90 group-hover:opacity-100 transition-opacity img-optimize"
               />
 
               {/* HOVER OVERLAY */}
