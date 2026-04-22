@@ -1,7 +1,7 @@
 export type MortalityType = 'mortal' | 'ageless' | 'immortal';
 
 export interface PortraitFrame {
-  path: string;
+  path: string | null;
   zoom: number;
   offset_x: number;
   offset_y: number;

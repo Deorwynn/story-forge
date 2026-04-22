@@ -363,6 +363,7 @@ export default function EditProjectForm({
                         collection="projects"
                         entityId={project.id}
                         currentPath={coverPath}
+                        version={previewKey}
                         onUploadSuccess={(newPath: string) => {
                           setCoverPath(newPath);
                           setPreviewKey(Date.now());
