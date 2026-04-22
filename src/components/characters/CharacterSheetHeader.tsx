@@ -201,8 +201,6 @@ export default function CharacterSheetHeader({
     ? 'transition-all duration-500 ease-in-out group-data-[switching=true]:transition-none'
     : '';
 
-  console.log('Header rendering Maria with Book ID:', currentBookId);
-
   return (
     <div
       ref={containerRef}
@@ -234,15 +232,16 @@ export default function CharacterSheetHeader({
       </div>
 
       {/* RIGHT COLUMN: NAME & DESCRIPTION */}
-      <div
-        className="flex-1 w-full"
-        onFocus={() => {
-          setIsEditing(true);
-          setIsClosing(false);
-        }}
-        onBlur={handleBlur}
-      >
-        <div className="flex flex-wrap items-end gap-x-2 gap-y-4 min-h-[64px]">
+      <div className="flex-1 w-full">
+        <div
+          className="flex flex-wrap items-end gap-x-2 gap-y-4 min-h-[64px]"
+          onFocus={() => {
+            if (isFramerOpen) return;
+            setIsEditing(true);
+            setIsClosing(false);
+          }}
+          onBlur={handleBlur}
+        >
           <div className={transitionClass}>
             <AutoInput
               label="First Name"
@@ -336,10 +335,14 @@ export default function CharacterSheetHeader({
           <PortraitFramerModal
             imageSrc={portraitUrl}
             initialFrame={getActivePortrait(metadata, currentBookId)}
-            onClose={() => setIsFramerOpen(false)}
+            onClose={() => {
+              setIsFramerOpen(false);
+              setIsEditing(false);
+            }}
             onSave={(finalFrame) => {
               onUpdateFraming(finalFrame);
               setIsFramerOpen(false);
+              setIsEditing(false);
             }}
           />
         )}
