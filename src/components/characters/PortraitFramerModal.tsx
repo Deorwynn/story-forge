@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import ModalShell from '../shared/ModalShell';
 import Slider from '../shared/Slider';
 import Button from '../shared/Button';
@@ -17,7 +17,6 @@ export default function PortraitFramerModal({
   onSave,
   onClose,
 }: PortraitFramerModalProps) {
-  // Use optional chaining and nullish coalescing to prevent the "zoom of undefined" crash
   const [zoom, setZoom] = useState(initialFrame?.zoom ?? 1);
   const [isDragging, setIsDragging] = useState(false);
   const [offset, setOffset] = useState({
@@ -25,24 +24,24 @@ export default function PortraitFramerModal({
     y: initialFrame?.offset_y ?? 50,
   });
 
-  const updatePosition = (clientX: number, clientY: number) => {
+  const updatePosition = useCallback((clientX: number, clientY: number) => {
     const container = document.getElementById('viewfinder-container');
     if (!container) return;
 
-    window.requestAnimationFrame(() => {
-      const rect = container.getBoundingClientRect();
+    const rect = container.getBoundingClientRect();
 
-      // Calculate raw percentage
-      const rawX = ((clientX - rect.left) / rect.width) * 100;
-      const rawY = ((clientY - rect.top) / rect.height) * 100;
+    // Calculate percentage based on mouse position relative to container
+    const x = Math.max(
+      0,
+      Math.min(100, ((clientX - rect.left) / rect.width) * 100)
+    );
+    const y = Math.max(
+      0,
+      Math.min(100, ((clientY - rect.top) / rect.height) * 100)
+    );
 
-      // Invert and Clamp (Adjusted logic to feel more intuitive for centering)
-      const x = Math.max(0, Math.min(100, rawX));
-      const y = Math.max(0, Math.min(100, rawY));
-
-      setOffset({ x, y });
-    });
-  };
+    setOffset({ x, y });
+  }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -54,8 +53,9 @@ export default function PortraitFramerModal({
     if (!isDragging) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      e.preventDefault();
-      updatePosition(e.clientX, e.clientY);
+      window.requestAnimationFrame(() => {
+        updatePosition(e.clientX, e.clientY);
+      });
     };
 
     const handleMouseUp = () => {
@@ -69,7 +69,7 @@ export default function PortraitFramerModal({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging]);
+  }, [isDragging, updatePosition]);
 
   return (
     <ModalShell title="Position Portrait" onClose={onClose} maxWidth="max-w-md">
@@ -86,14 +86,20 @@ export default function PortraitFramerModal({
             <img
               src={imageSrc}
               alt="Framer"
-              className="w-full h-full object-cover select-none pointer-events-none duration-300 ease-out"
+              className="w-full h-full object-contain select-none pointer-events-none"
               style={{
-                objectPosition: `${offset.x}% ${offset.y}%`,
-                transform: `scale(${zoom})`,
+                transform: `
+                  scale(${zoom}) 
+                  translate(${(offset.x - 50) / zoom}%, ${(offset.y - 50) / zoom}%)
+                `,
+                transformOrigin: 'center center',
+                willChange: 'transform',
               }}
             />
             {/* Guide Overlay */}
-            <div className="absolute inset-0 pointer-events-none border border-white/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <div
+              className={`absolute inset-0 pointer-events-none border border-white/20 flex items-center justify-center transition-opacity ${isDragging ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+            >
               <div className="w-8 h-[1px] bg-white/40" />
               <div className="h-8 w-[1px] bg-white/40 absolute" />
             </div>

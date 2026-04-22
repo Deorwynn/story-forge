@@ -88,18 +88,27 @@ export const ImageUpload = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!previewUrl && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      handleSelectImage();
+    }
+  };
+
   return (
     <div className="flex flex-col gap-3 text-center">
       <div
-        className={`relative group ${variant === 'portrait' ? 'w-32' : 'w-full'}`}
+        className={`relative group ${variant === 'portrait' ? 'w-44' : 'w-full'}`}
       >
-        <button
-          type="button"
-          onClick={handleSelectImage}
+        <div
+          role="button"
+          tabIndex={previewUrl ? -1 : 0}
+          onKeyDown={handleKeyDown}
+          onClick={() => !previewUrl && handleSelectImage()}
           aria-label={previewUrl ? 'Change image' : 'Upload image'}
           className={`
             relative w-full transition-all outline-none overflow-hidden
-            flex flex-col items-center justify-center border-2 border-dashed cursor-pointer
+            flex flex-col items-center justify-center border-2 border-dashed
             ${
               variant === 'portrait'
                 ? 'aspect-[3/4] rounded-xl' // Character Portrait Shape
@@ -115,32 +124,38 @@ export const ImageUpload = ({
                 src={previewUrl}
                 alt="Preview"
                 style={{
-                  objectPosition: `${framing?.offset_x ?? 50}% ${framing?.offset_y ?? 50}%`,
-                  transform: `scale(${framing?.zoom || 1})`,
+                  transform: `
+                    scale(${framing?.zoom || 1}) 
+                    translate(${((framing?.offset_x ?? 50) - 50) / (framing?.zoom || 1)}%, 
+                              ${((framing?.offset_y ?? 50) - 50) / (framing?.zoom || 1)}%)
+                  `,
+                  transformOrigin: 'center center',
                   willChange: 'transform',
-                  backfaceVisibility: 'hidden',
-                  WebkitBackfaceVisibility: 'hidden',
                 }}
-                className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity img-optimize"
+                className="w-full h-full object-contain opacity-90 group-hover:opacity-100 transition-opacity img-optimize"
               />
 
               {/* HOVER OVERLAY */}
-              <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
+              <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all flex flex-col items-center justify-center gap-2 p-2">
                 <button
                   type="button"
-                  onClick={handleSelectImage}
-                  className="w-full py-1.5 bg-white text-slate-800 text-[10px] font-bold uppercase tracking-wider rounded-lg shadow-lg hover:bg-purple-50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSelectImage();
+                  }}
+                  className={`${variant === 'portrait' ? 'w-full' : 'px-5'} py-1.5 bg-white text-slate-800 text-[10px] font-bold uppercase tracking-wider rounded-lg shadow-lg hover:bg-purple-50 transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-1`}
                 >
                   Change
                 </button>
 
                 {onReposition && (
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       onReposition();
                     }}
-                    className="w-full py-1.5 bg-purple-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg shadow-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                    className="w-full py-1.5 bg-purple-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg shadow-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-1 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-1"
                   >
                     <Move size={10} />
                     Position
@@ -166,7 +181,7 @@ export const ImageUpload = ({
               <div className="animate-spin rounded-full h-6 w-6 border-2 border-[#9333ea] border-t-transparent"></div>
             </div>
           )}
-        </button>
+        </div>
 
         {/* Trash Button */}
         {previewUrl && !isUploading && (
