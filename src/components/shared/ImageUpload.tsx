@@ -98,7 +98,7 @@ export const ImageUpload = ({
   return (
     <div className="flex flex-col gap-3 text-center">
       <div
-        className={`relative group ${variant === 'portrait' ? 'w-32' : 'w-full'}`}
+        className={`relative group ${variant === 'portrait' ? 'w-44' : 'w-full'}`}
       >
         <div
           role="button"

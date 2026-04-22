@@ -208,7 +208,7 @@ export default function CharacterSheetHeader({
     >
       {/* LEFT COLUMN: PORTRAIT + ROLE */}
       <div className="flex flex-col items-center gap-3 shrink-0">
-        <div className="relative w-32">
+        <div className="relative w-44">
           <ImageUpload
             variant="portrait"
             collection="characters"
