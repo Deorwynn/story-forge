@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { PortraitFrame } from '../../types/character';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import CharacterSheetHeader from './CharacterSheetHeader';
 import CharacterSheetIdentity from './CharacterSheetIdentity';
@@ -20,50 +21,42 @@ export default function CharacterSheetView({
   const [isLoading, setIsLoading] = useState(true);
   const [localData, setLocalData] = useState<any>(null);
   const [lastSavedData, setLastSavedData] = useState<string>('');
+  const [portraitVersion, setPortraitVersion] = useState(0);
 
   const dataRef = useRef(localData);
   const masterRef = useRef(character);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const displayDataRef = useRef<any>(null);
+  const isInternalUpdating = useRef(false);
 
   // 1. Fetch character data on mount or ID change
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadData = async () => {
-      setIsLoading(true);
-
-      try {
-        const data = await invoke<Character>('get_character', {
-          id: characterId,
-        });
-        if (isMounted) {
-          setCharacter(data);
-          displayDataRef.current = { ...data };
-          setLocalData({ ...data });
-          // CRITICAL: Update the snapshot so the auto-save doesn't fire immediately
-          setLastSavedData(
-            JSON.stringify({
-              name: data.display_name,
-              metadata: data.metadata,
-              role: data.role,
-              book_overrides: data.book_overrides,
-              portrait_path: data.portrait_path,
-            })
-          );
-          setIsLoading(false);
-        }
-      } catch (err) {
-        console.error('Load failed:', err);
-        setIsLoading(false);
-      }
-    };
-
-    loadData();
-    return () => {
-      isMounted = false;
-    };
+  const loadData = useCallback(async () => {
+    if (!localData) setIsLoading(true);
+    try {
+      const data = await invoke<Character>('get_character', {
+        id: characterId,
+      });
+      setCharacter(data);
+      setLocalData({ ...data });
+      setLastSavedData(
+        JSON.stringify({
+          name: data.display_name,
+          metadata: data.metadata,
+          role: data.role,
+          book_overrides: data.book_overrides,
+          portrait_path: data.portrait_path,
+        })
+      );
+    } catch (err) {
+      console.error('Load failed:', err);
+    } finally {
+      setIsLoading(false);
+    }
   }, [characterId]);
+
+  // 2. Update your existing useEffect to use this function
+  useEffect(() => {
+    loadData();
+  }, [loadData, activeBookId]);
 
   // 2. The Save Function
   const saveToBackend = useCallback(
@@ -102,7 +95,7 @@ export default function CharacterSheetView({
 
   // 3. Save on localData changes with debounce, and also on unmount/character switch if dirty
   useEffect(() => {
-    if (!localData || isLoading) return;
+    if (!localData || isLoading || isInternalUpdating.current) return;
 
     const currentSnapshot = JSON.stringify({
       name: localData.display_name,
@@ -216,11 +209,62 @@ export default function CharacterSheetView({
     });
   };
 
-  const handlePortraitUpdate = (newPath: string) => {
-    setLocalData((prev: any) => ({
-      ...prev,
-      portrait_path: newPath,
-    }));
+  const handlePortraitUpdate = async (newPath: string) => {
+    try {
+      const defaults = { zoom: 1.0, offset_x: 50.0, offset_y: 50.0 };
+
+      await invoke('update_character_portrait', {
+        id: characterId,
+        path: newPath,
+        book_id: activeBookId,
+        ...defaults,
+      });
+
+      // Update local state so UI is in sync
+      setLocalData((prev: any) => {
+        const updated = { ...prev, portrait_path: newPath };
+        // Manual snapshot update to prevent auto-save collision
+        setLastSavedData(
+          JSON.stringify({
+            name: updated.display_name,
+            metadata: updated.metadata,
+            role: updated.role,
+            book_overrides: updated.book_overrides,
+            portrait_path: updated.portrait_path,
+          })
+        );
+        return updated;
+      });
+
+      setPortraitVersion((v) => v + 1);
+    } catch (err) {
+      console.error('Failed to update portrait:', err);
+    }
+  };
+
+  const handleUpdateFraming = async (frame: PortraitFrame) => {
+    isInternalUpdating.current = true;
+    setIsSaving(true);
+
+    try {
+      await invoke('update_character_portrait', {
+        id: characterId,
+        // If frame.path is empty, send the current localData path
+        path: frame.path || localData.portrait_path,
+        book_id: activeBookId,
+        zoom: frame.zoom,
+        offset_x: frame.offset_x,
+        offset_y: frame.offset_y,
+      });
+
+      await loadData();
+      setPortraitVersion((v) => v + 1);
+    } catch (err) {
+      console.error('Framing save failed:', err);
+    } finally {
+      isInternalUpdating.current = false;
+      setIsSaving(false);
+    }
   };
 
   const handleNamePartUpdate = (
@@ -304,8 +348,11 @@ export default function CharacterSheetView({
           metadata={localData.metadata}
           role={localData.role}
           portraitPath={localData.portrait_path}
+          portraitVersion={portraitVersion}
+          currentBookId={activeBookId}
           onSaveNameParts={handleNamePartUpdate}
           onUpdatePortrait={handlePortraitUpdate}
+          onUpdateFraming={handleUpdateFraming}
         />
 
         <CharacterSheetIdentity

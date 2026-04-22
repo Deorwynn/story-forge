@@ -287,27 +287,24 @@ function App() {
   }, [character?.id, activeProject?.id]);
 
   const handleEnterProject = async (baseProject: Project) => {
-    setCharacter(null); // Clear previous project's character
-    setActiveBookId(null);
-    setIsInitialLoad(true); // Show the curtain immediately
+    // 1. Calculate what the Book ID SHOULD be before clearing anything
+    const sanitizedBooks = (baseProject.books || []).map((b: any) => ({
+      ...b,
+      orderIndex: b.orderIndex ?? b.order_index ?? 0,
+    }));
+
+    const isStandalone =
+      baseProject.type === 'standalone' ||
+      (baseProject as any).project_type === 'standalone';
+
+    // 1. CLEAR existing state
+    setCharacter(null);
+    setIsInitialLoad(true);
 
     try {
-      // Get the last active book for this project from the DB
       const savedBookId = await invoke<string>('get_last_active_book', {
         project_id: baseProject.id,
       }).catch(() => null);
-
-      // Map the books
-      const sanitizedBooks = (baseProject.books || []).map((b: any) => ({
-        ...b,
-        orderIndex: b.orderIndex ?? b.order_index ?? 0,
-      }));
-
-      // If standalone, we don't care what the DB says.
-      // The only book is the first book.
-      const isStandalone =
-        baseProject.type === 'standalone' ||
-        (baseProject as any).project_type === 'standalone';
 
       const bookExists = sanitizedBooks.some((b) => b.id === savedBookId);
 

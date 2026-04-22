@@ -215,10 +215,13 @@ pub async fn update_character_portrait(
     id: String,
     path: Option<String>,
     book_id: Option<String>,
+    zoom: f64,
+    offset_x: f64,
+    offset_y: f64,
 ) -> Result<(), String> {
     let conn = state.db.lock().unwrap();
 
-    // 1. Get current metadata and old path cache
+    // 1. Fetch current state
     let (old_path, metadata_str): (Option<String>, String) = conn
         .query_row(
             "SELECT portrait_path, metadata FROM characters WHERE id = ?1",
@@ -227,42 +230,46 @@ pub async fn update_character_portrait(
         )
         .map_err(|e| e.to_string())?;
 
-    // 2. Cleanup old file if it changed
-    if let Some(old) = old_path {
-        if Some(&old) != path.as_ref() {
-            let _ = crate::commands::media::internal_delete_asset_file(&app_handle, &old);
+    let mut final_column_path = old_path.clone();
+
+    // ONLY delete the old file if we are updating the GLOBAL portrait 
+    // and the path is actually changing.
+    if book_id.is_none() {
+        if let Some(ref old) = old_path {
+            if Some(old) != path.as_ref() {
+                let _ = crate::commands::media::internal_delete_asset_file(&app_handle, old);
+            }
         }
+        final_column_path = path.clone();
     }
 
     // 3. Update the Temporal Metadata
     let mut metadata: CharacterMetadata = serde_json::from_str(&metadata_str).unwrap_or_default();
-    
-    // Get or create the temporal container
     let mut temporal_data = metadata.portrait_data.unwrap_or_default();
 
-    // Create the new frame with reset framing values
+    // Use the values passed from the frontend arguments
     let new_frame = PortraitFrame {
         path: path.clone().unwrap_or_default(),
-        zoom: 1.0,
-        offset_x: 50.0,
-        offset_y: 50.0,
+        zoom,
+        offset_x,
+        offset_y,
     };
 
-    // Apply to the specific book or global
     if let Some(bid) = book_id {
+        // If we are in a book, update the override JSON only
         temporal_data.book_overrides.insert(bid, new_frame);
     } else {
-        temporal_data.global_value = new_frame;
+        // If global, update the main frame and the column
+        temporal_data.global_value = new_frame.clone();
     }
 
     metadata.portrait_data = Some(temporal_data);
-    
     let updated_metadata_json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
 
     // 4. Final Database Update
     conn.execute(
         "UPDATE characters SET portrait_path = ?1, metadata = ?2, last_modified = ?3 WHERE id = ?4",
-        (&path, updated_metadata_json, chrono::Utc::now().timestamp(), &id),
+        (&final_column_path, updated_metadata_json, chrono::Utc::now().timestamp(), &id),
     ).map_err(|e| e.to_string())?;
 
     Ok(())

@@ -1,17 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { appDataDir, join } from '@tauri-apps/api/path';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Move } from 'lucide-react';
+import { PortraitFrame } from '../../types/character';
 
 interface ImageUploadProps {
   currentPath?: string | null;
   collection: 'projects' | 'characters';
   entityId: string;
   onUploadSuccess: (newPath: string) => void;
+  onReposition?: () => void;
+  framing?: PortraitFrame;
   label?: string;
   variant?: 'square' | 'portrait';
+  version: number;
 }
 
 export const ImageUpload = ({
@@ -19,28 +23,33 @@ export const ImageUpload = ({
   collection,
   entityId,
   onUploadSuccess,
+  onReposition,
+  framing,
   label = 'Upload Image',
   variant = 'square',
+  version,
 }: ImageUploadProps) => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Update preview whenever the path from the DB changes
+  const resolveFullUrl = useCallback(async (path: string, v: number) => {
+    try {
+      const appData = await appDataDir();
+      const fullPath = await join(appData, 'assets', path);
+      const assetUrl = convertFileSrc(fullPath);
+      setPreviewUrl(`${assetUrl}?v=${v}`);
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
   useEffect(() => {
     if (currentPath) {
-      // Logic to resolve the full path from AppData + relative path
-      resolveFullUrl(currentPath);
+      resolveFullUrl(currentPath, version);
     } else {
       setPreviewUrl(null);
     }
-  }, [currentPath]);
-
-  const resolveFullUrl = async (relative: string) => {
-    const appData = await appDataDir();
-    const fullPath = await join(appData, 'assets', relative);
-    const assetUrl = convertFileSrc(fullPath);
-    setPreviewUrl(`${assetUrl}?t=${Date.now()}`);
-  };
+  }, [currentPath, version, resolveFullUrl]);
 
   const handleSelectImage = async () => {
     if (!entityId) return;
@@ -104,21 +113,39 @@ export const ImageUpload = ({
             <>
               <img
                 src={previewUrl}
-                alt="Project cover preview"
-                style={{ imageRendering: 'auto' }}
+                alt="Preview"
+                style={{
+                  objectPosition: `${framing?.offset_x ?? 50}% ${framing?.offset_y ?? 50}%`,
+                  transform: `scale(${framing?.zoom || 1})`,
+                  willChange: 'transform',
+                  backfaceVisibility: 'hidden',
+                  WebkitBackfaceVisibility: 'hidden',
+                }}
                 className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity img-optimize"
               />
-              <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <div
-                  className="
-                        inline-flex items-center justify-center whitespace-nowrap 
-                        text-xs font-bold transition-all h-8 rounded-lg px-4 gap-2 
-                        bg-[#9333ea] text-white shadow-lg
-                        transform translate-y-2 group-hover:translate-y-0
-                    "
+
+              {/* HOVER OVERLAY */}
+              <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
+                <button
+                  type="button"
+                  onClick={handleSelectImage}
+                  className="w-full py-1.5 bg-white text-slate-800 text-[10px] font-bold uppercase tracking-wider rounded-lg shadow-lg hover:bg-purple-50 transition-colors"
                 >
-                  Change Image
-                </div>
+                  Change
+                </button>
+
+                {onReposition && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onReposition();
+                    }}
+                    className="w-full py-1.5 bg-purple-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg shadow-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <Move size={10} />
+                    Position
+                  </button>
+                )}
               </div>
             </>
           ) : (
