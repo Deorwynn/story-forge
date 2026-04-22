@@ -124,11 +124,13 @@ export const ImageUpload = ({
                 src={previewUrl}
                 alt="Preview"
                 style={{
-                  objectPosition: `${framing?.offset_x ?? 50}% ${framing?.offset_y ?? 50}%`,
-                  transform: `scale(${framing?.zoom || 1})`,
+                  transform: `
+                    scale(${framing?.zoom || 1}) 
+                    translate(${((framing?.offset_x ?? 50) - 50) / (framing?.zoom || 1)}%, 
+                              ${((framing?.offset_y ?? 50) - 50) / (framing?.zoom || 1)}%)
+                  `,
+                  transformOrigin: 'center center',
                   willChange: 'transform',
-                  backfaceVisibility: 'hidden',
-                  WebkitBackfaceVisibility: 'hidden',
                 }}
                 className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity img-optimize"
               />
