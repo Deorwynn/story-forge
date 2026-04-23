@@ -264,8 +264,10 @@ export default function CharacterSheetView({
   const handleUpdateFraming = async (frame: PortraitFrame) => {
     isInternalUpdating.current = true;
     setIsSaving(true);
+    setShowSavingText(true);
 
     try {
+      // 1. Update the database
       await invoke('update_character_portrait', {
         id: characterId,
         // If frame.path is empty, send the current localData path
@@ -276,13 +278,25 @@ export default function CharacterSheetView({
         offset_y: frame.offset_y,
       });
 
-      await loadData();
+      // 2. Fetch the fresh character object from the DB
+      const updatedChar = await invoke<Character>('get_character', {
+        id: characterId,
+      });
+
+      // 3. Update local states
+      setCharacter(updatedChar);
+      setLocalData({ ...updatedChar });
+
+      // 4. CRITICAL: Update App.tsx so the emergency save isn't stale!
+      updateCharacter(updatedChar);
+
       setPortraitVersion((v) => v + 1);
     } catch (err) {
       console.error('Framing save failed:', err);
     } finally {
       isInternalUpdating.current = false;
       setIsSaving(false);
+      setTimeout(() => setShowSavingText(false), 1000);
     }
   };
 

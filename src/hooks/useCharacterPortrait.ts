@@ -11,38 +11,67 @@ export function useCharacterPortrait(
 ) {
   // 1. Determine the "Effective" Frame (Inheritance Logic)
   const effectiveFrame = useMemo(() => {
-    if (!character) return null; // Only bail if there's no character at all
+    if (!character) return null;
 
-    // 1. If we have books and an active ID, try the walkback
+    const overrides = character.metadata?.portrait_data?.book_overrides || {};
+    const global = character.metadata?.portrait_data?.global_value;
+
+    // 1. RESOLVE IMAGE PATH (The "Source")
+    let winningPath = '';
     if (projectBooks && activeBookId) {
       const currentIndex = projectBooks.findIndex((b) => b.id === activeBookId);
       if (currentIndex !== -1) {
         for (let i = currentIndex; i >= 0; i--) {
           const bid = projectBooks[i].id;
-          const override =
-            character.metadata?.portrait_data?.book_overrides?.[bid];
-          if (override?.path && override.path.trim() !== '') {
-            return override;
+          if (overrides[bid]?.path?.trim()) {
+            winningPath = overrides[bid].path;
+            break;
+          }
+        }
+      }
+    }
+    if (!winningPath)
+      winningPath = global?.path || character.portrait_path || '';
+    if (!winningPath) return null;
+
+    // 2. RESOLVE FRAMING (The "Zoom/Offset")
+    // We walk back from the current book to find the FIRST defined zoom/offset
+    let winningZoom = 1.0;
+    let winningX = 50.0;
+    let winningY = 50.0;
+    let framingFound = false;
+
+    if (projectBooks && activeBookId) {
+      const currentIndex = projectBooks.findIndex((b) => b.id === activeBookId);
+      if (currentIndex !== -1) {
+        for (let i = currentIndex; i >= 0; i--) {
+          const bid = projectBooks[i].id;
+          const ov = overrides[bid];
+          // We check if the override exists AND has a non-zero zoom
+          if (ov && ov.zoom && ov.zoom !== 0) {
+            winningZoom = ov.zoom;
+            winningX = ov.offset_x;
+            winningY = ov.offset_y;
+            framingFound = true;
+            break;
           }
         }
       }
     }
 
-    // 2. FALLBACK: Global Portrait
-    const global = character.metadata?.portrait_data?.global_value;
-    if (global?.path && global.path.trim() !== '') return global;
-
-    // 3. LAST RESORT: Legacy flat column
-    if (character.portrait_path) {
-      return {
-        path: character.portrait_path,
-        zoom: 1,
-        offset_x: 50,
-        offset_y: 50,
-      } as PortraitFrame;
+    // Fallback to Global if no volume defined its own framing
+    if (!framingFound && global && global.zoom) {
+      winningZoom = global.zoom;
+      winningX = global.offset_x;
+      winningY = global.offset_y;
     }
 
-    return null;
+    return {
+      path: winningPath,
+      zoom: winningZoom,
+      offset_x: winningX,
+      offset_y: winningY,
+    } as PortraitFrame;
   }, [character, activeBookId, projectBooks, version]);
 
   // 2. Resolve the Asset URL (Tauri Logic)
