@@ -309,14 +309,17 @@ function App() {
       const bookExists = sanitizedBooks.some((b) => b.id === savedBookId);
 
       let targetVolume = 1;
+      let finalBookId = sanitizedBooks[0]?.id || null; // Default to first book
 
-      // Only respect savedBookId if it's a series and the book still exists
       if (!isStandalone && savedBookId && bookExists) {
         const idx = sanitizedBooks.findIndex((b: any) => b.id === savedBookId);
         if (idx !== -1) {
           targetVolume = idx + 1;
+          finalBookId = savedBookId;
         }
       }
+
+      setActiveBookId(finalBookId);
 
       // Determine the FINAL name immediately to prevent the "Volume 2" flash
       const finalName = isStandalone
@@ -351,7 +354,7 @@ function App() {
       });
     } catch (err) {
       console.error('Entry failed', err);
-      setActiveProject(baseProject); // Fallback
+      setActiveProject(baseProject);
     } finally {
       setIsInitialLoad(false);
     }

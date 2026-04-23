@@ -12,7 +12,7 @@ interface ImageUploadProps {
   entityId: string;
   onUploadSuccess: (newPath: string) => void;
   onReposition?: () => void;
-  framing?: PortraitFrame;
+  framing?: PortraitFrame | null;
   label?: string;
   variant?: 'square' | 'portrait';
   version: number;
@@ -132,7 +132,7 @@ export const ImageUpload = ({
                   transformOrigin: 'center center',
                   willChange: 'transform',
                 }}
-                className="w-full h-full object-contain opacity-90 group-hover:opacity-100 transition-opacity img-optimize"
+                className={`w-full h-full ${variant === 'portrait' ? 'object-contain' : 'object-cover'} opacity-90 group-hover:opacity-100 transition-opacity img-optimize`}
               />
 
               {/* HOVER OVERLAY */}

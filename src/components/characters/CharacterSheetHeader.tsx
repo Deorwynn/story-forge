@@ -1,11 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { PortraitFrame } from '../../types/character';
 import { Plus } from 'lucide-react';
-import { convertFileSrc } from '@tauri-apps/api/core';
-import { appDataDir, join } from '@tauri-apps/api/path';
 import { ImageUpload } from '../shared/ImageUpload';
 import PortraitFramerModal from './PortraitFramerModal';
-import { getActivePortrait } from '../../utils/characterUtils';
 
 interface HeaderProps {
   metadata: any;
@@ -18,7 +15,9 @@ interface HeaderProps {
   ) => void;
   onUpdatePortrait: (newPath: string) => void;
   onUpdateFraming: (frame: PortraitFrame) => void;
-  portraitPath?: string | null;
+  portraitUrl: string | null;
+  effectiveFrame: PortraitFrame | null;
+  displayPath: string | null;
   currentBookId?: string | null;
   portraitVersion: number;
 }
@@ -96,9 +95,10 @@ export default function CharacterSheetHeader({
   onSaveNameParts,
   onUpdatePortrait,
   onUpdateFraming,
-  portraitPath,
-  currentBookId,
   portraitVersion,
+  portraitUrl,
+  effectiveFrame,
+  displayPath,
 }: HeaderProps) {
   const [first, setFirst] = useState(metadata.first_name || '');
   const [middle, setMiddle] = useState(metadata.middle_name || '');
@@ -109,13 +109,10 @@ export default function CharacterSheetHeader({
   const [isAddingLast, setIsAddingLast] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [isFramerOpen, setIsFramerOpen] = useState(false);
-  const [portraitUrl, setPortraitUrl] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const allowTransitions = useRef(false);
   const prevIdRef = useRef(metadata.id);
-  const activeFrame = getActivePortrait(metadata, currentBookId);
-  const activeDisplayPath = activeFrame?.path || portraitPath;
 
   if (prevIdRef.current !== metadata.id) {
     prevIdRef.current = metadata.id;
@@ -143,20 +140,6 @@ export default function CharacterSheetHeader({
     });
     return () => cancelAnimationFrame(timer);
   }, [metadata.id]);
-
-  // Logic to resolve the activeDisplayPath into a real asset URL for the Framer Modal
-  useEffect(() => {
-    const resolveUrl = async () => {
-      if (activeDisplayPath) {
-        const appData = await appDataDir();
-        const fullPath = await join(appData, 'assets', activeDisplayPath);
-        setPortraitUrl(convertFileSrc(fullPath));
-      } else {
-        setPortraitUrl(null);
-      }
-    };
-    resolveUrl();
-  }, [activeDisplayPath, portraitVersion]);
 
   // Sync values if metadata changes externally (without resetting UI)
   useEffect(() => {
@@ -213,11 +196,9 @@ export default function CharacterSheetHeader({
             variant="portrait"
             collection="characters"
             entityId={metadata.id}
-            currentPath={activeDisplayPath}
+            currentPath={displayPath}
             version={portraitVersion}
-            framing={
-              metadata ? getActivePortrait(metadata, currentBookId) : undefined
-            }
+            framing={effectiveFrame}
             onUploadSuccess={(newPath) => {
               onUpdatePortrait(newPath);
             }}
@@ -334,7 +315,7 @@ export default function CharacterSheetHeader({
         {isFramerOpen && portraitUrl && (
           <PortraitFramerModal
             imageSrc={portraitUrl}
-            initialFrame={getActivePortrait(metadata, currentBookId)}
+            initialFrame={effectiveFrame}
             onClose={() => {
               setIsFramerOpen(false);
               setIsEditing(false);
