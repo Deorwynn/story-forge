@@ -35,9 +35,9 @@ const InheritanceIndicator = ({
           aria-label={`Override active. Reset to inherited value from ${sourceLabel}`}
           title={`Value overridden. Click to revert to ${sourceLabel}.`}
           className="
-            p-1 rounded-md 
+              relative p-1 rounded-md 
               hover:bg-purple-100 text-purple-600 
-              transition-colors group/reset 
+              transition-colors group/reset-btn 
               cursor-pointer
               outline-none focus:ring-2 focus:ring-purple-400 focus:bg-purple-50
           "
@@ -47,7 +47,7 @@ const InheritanceIndicator = ({
             aria-hidden="true"
             className="
               w-2.5 h-2.5 absolute -top-1 -right-1 
-              opacity-0 group-hover/revert:opacity-100 
+              opacity-0 group-hover/reset:opacity-100 
               bg-white rounded-full shadow-sm transition-opacity
             "
           />

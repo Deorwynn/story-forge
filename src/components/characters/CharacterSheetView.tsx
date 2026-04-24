@@ -339,36 +339,75 @@ export default function CharacterSheetView({
   }, [project, activeBookId]);
 
   const portraitInheritance = useMemo(() => {
-    // Safety check: if data isn't loaded, or we're in Volume 1, or no book is active
-    if (!localData || hideInheritance || !activeBookId) {
+    // 1. Dig into the actual path where Rust saves the data
+    const portraitData = localData?.metadata?.portrait_data;
+    const overrides = portraitData?.book_overrides || {};
+
+    if (!localData || hideInheritance || !activeBookId || !project?.books) {
       return { isOverridden: false, inheritanceSource: null };
     }
 
-    const hasOverride =
-      !!localData.book_overrides?.[activeBookId]?.portrait_path;
+    // 2. Check if CURRENT book has an override in the portrait_data blob
+    // Note: Rust saves the path inside a 'path' field within the PortraitFrame object
+    const isOverridden = !!overrides[activeBookId]?.path;
 
-    return {
-      isOverridden: hasOverride,
-      inheritanceSource: 'global' as const,
-    };
-  }, [localData, activeBookId, hideInheritance]);
+    // 3. Find the Source
+    const currentIndex = project.books.findIndex((b) => b.id === activeBookId);
+    let inheritanceSource: number | 'global' = 'global';
+
+    for (let i = currentIndex - 1; i >= 0; i--) {
+      const bookId = project.books[i].id;
+
+      // Check the nested metadata path for previous books
+      const pathAtThisVolume = overrides[bookId]?.path;
+
+      if (pathAtThisVolume) {
+        inheritanceSource = i + 1;
+        break;
+      }
+    }
+
+    return { isOverridden, inheritanceSource };
+  }, [localData, activeBookId, hideInheritance, project?.books]);
 
   const handleResetPortrait = async () => {
     if (!activeBookId || hideInheritance || !localData) return;
 
-    setLocalData((prev: any) => {
-      if (!prev) return prev;
-      const updated = { ...prev };
-      if (updated.book_overrides?.[activeBookId]) {
-        const newOverrides = { ...updated.book_overrides };
-        delete newOverrides[activeBookId].portrait_path;
-        delete newOverrides[activeBookId].zoom;
-        delete newOverrides[activeBookId].offset_x;
-        delete newOverrides[activeBookId].offset_y;
-        updated.book_overrides = newOverrides;
-      }
-      return updated;
-    });
+    // 1. Calculate the new state object first
+    const updatedMetadata = { ...localData.metadata };
+
+    if (updatedMetadata.portrait_data?.book_overrides) {
+      const newOverrides = { ...updatedMetadata.portrait_data.book_overrides };
+
+      // Remove the override for the active book
+      delete newOverrides[activeBookId];
+
+      updatedMetadata.portrait_data = {
+        ...updatedMetadata.portrait_data,
+        book_overrides: newOverrides,
+      };
+    }
+
+    const updatedCharacter = {
+      ...localData,
+      metadata: updatedMetadata,
+    };
+
+    // 2. Update local UI state
+    setLocalData(updatedCharacter);
+
+    // 3. Persist to SQLite immediately
+    try {
+      setIsSaving(true);
+      await saveToBackend(updatedCharacter);
+
+      // 4. Force a version bump to refresh the image component
+      setPortraitVersion((v) => v + 1);
+    } catch (err) {
+      console.error('Failed to persist portrait reset:', err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // ONLY return the hard loader if we have zero data (initial boot)

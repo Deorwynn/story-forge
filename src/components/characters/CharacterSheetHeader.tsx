@@ -212,10 +212,10 @@ export default function CharacterSheetHeader({
               onUpdatePortrait(newPath);
             }}
             onReposition={() => setIsFramerOpen(true)}
-            isMasterBook={isMasterBook}
-            isOverridden={portraitInheritance?.isOverridden}
-            inheritanceSource={portraitInheritance?.inheritanceSource}
+            isOverridden={portraitInheritance?.isOverridden ?? false}
+            inheritanceSource={portraitInheritance?.inheritanceSource ?? null}
             onReset={onResetPortrait}
+            isMasterBook={isMasterBook}
           />
         </div>
 
