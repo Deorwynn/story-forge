@@ -230,24 +230,22 @@ pub async fn update_character_portrait(
         )
         .map_err(|e| e.to_string())?;
 
-    let mut final_column_path = old_path.clone();
+    // 2. Identify if this is the "Global" or "Volume 1" context
+    let is_volume_one = if let Some(ref bid) = book_id {
+        let first_book_id: String = conn.query_row(
+            "SELECT id FROM books WHERE project_id = (SELECT project_id FROM characters WHERE id = ?1) ORDER BY sort_order LIMIT 1",
+            [&id],
+            |row| row.get(0)
+        ).unwrap_or_default();
+        bid == &first_book_id
+    } else {
+        true // If no book_id, it is global context
+    };
 
-    // ONLY delete the old file if we are updating the GLOBAL portrait 
-    // and the path is actually changing.
-    if book_id.is_none() {
-        if let Some(ref old) = old_path {
-            if Some(old) != path.as_ref() {
-                let _ = crate::commands::media::internal_delete_asset_file(&app_handle, old);
-            }
-        }
-        final_column_path = path.clone();
-    }
-
-    // 3. Update the Temporal Metadata
+    // 3. Prepare the new Metadata and the Portrait Frame object
     let mut metadata: CharacterMetadata = serde_json::from_str(&metadata_str).unwrap_or_default();
     let mut temporal_data = metadata.portrait_data.unwrap_or_default();
 
-    // Use the values passed from the frontend arguments
     let new_frame = PortraitFrame {
         path: path.clone().unwrap_or_default(),
         zoom,
@@ -255,22 +253,45 @@ pub async fn update_character_portrait(
         offset_y,
     };
 
-    if let Some(bid) = book_id {
-        // If we are in a book, update the override JSON only
-        temporal_data.book_overrides.insert(bid, new_frame);
-    } else {
-        // If global, update the main frame and the column
+    // 4. File Management & Column Synchronization
+    let mut final_column_path = old_path.clone();
+
+    if is_volume_one {
+        // If updating Volume 1 or Global, handle file deletion
+        if let Some(ref old) = old_path {
+            if Some(old) != path.as_ref() {
+                let _ = crate::commands::media::internal_delete_asset_file(&app_handle, old);
+            }
+        }
+        
+        // SYNC: Update the SQLite column and the metadata global_value
+        final_column_path = path.clone();
         temporal_data.global_value = new_frame.clone();
+
+        if let Some(ref bid) = book_id {
+            temporal_data.book_overrides.insert(bid.clone(), new_frame.clone());
+        }
     }
 
+    // 5. Always update the specific book override if a book_id exists
+    if let Some(bid) = book_id {
+        temporal_data.book_overrides.insert(bid, new_frame);
+    }
+
+    // 6. Save back to Database
     metadata.portrait_data = Some(temporal_data);
     let updated_metadata_json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
 
-    // 4. Final Database Update
     conn.execute(
         "UPDATE characters SET portrait_path = ?1, metadata = ?2, last_modified = ?3 WHERE id = ?4",
-        (&final_column_path, updated_metadata_json, chrono::Utc::now().timestamp(), &id),
-    ).map_err(|e| e.to_string())?;
+        (
+            &final_column_path,
+            updated_metadata_json,
+            chrono::Utc::now().timestamp(),
+            &id,
+        ),
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }

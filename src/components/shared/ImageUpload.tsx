@@ -5,17 +5,22 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { appDataDir, join } from '@tauri-apps/api/path';
 import { Plus, Trash2, Move } from 'lucide-react';
 import { PortraitFrame } from '../../types/character';
+import InheritanceIndicator from './InheritanceIndicator';
 
 interface ImageUploadProps {
   currentPath?: string | null;
   collection: 'projects' | 'characters';
   entityId: string;
   onUploadSuccess: (newPath: string) => void;
+  onReset?: () => void;
   onReposition?: () => void;
-  framing?: PortraitFrame;
+  framing?: PortraitFrame | null;
   label?: string;
   variant?: 'square' | 'portrait';
   version: number;
+  isMasterBook?: boolean;
+  inheritanceSource?: number | 'global' | null;
+  isOverridden?: boolean;
 }
 
 export const ImageUpload = ({
@@ -23,11 +28,15 @@ export const ImageUpload = ({
   collection,
   entityId,
   onUploadSuccess,
+  onReset,
   onReposition,
   framing,
   label = 'Upload Image',
   variant = 'square',
   version,
+  isMasterBook = false,
+  inheritanceSource,
+  isOverridden,
 }: ImageUploadProps) => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -132,7 +141,7 @@ export const ImageUpload = ({
                   transformOrigin: 'center center',
                   willChange: 'transform',
                 }}
-                className="w-full h-full object-contain opacity-90 group-hover:opacity-100 transition-opacity img-optimize"
+                className={`w-full h-full ${variant === 'portrait' ? 'object-contain' : 'object-cover'} opacity-90 group-hover:opacity-100 transition-opacity img-optimize`}
               />
 
               {/* HOVER OVERLAY */}
@@ -183,22 +192,37 @@ export const ImageUpload = ({
           )}
         </div>
 
-        {/* Trash Button */}
+        {/* Action Corner: Trash for Master, Inheritance for Others */}
         {previewUrl && !isUploading && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onUploadSuccess('');
-            }}
-            className="absolute top-2 right-2 p-1.5 bg-white text-red-500 rounded-full shadow-lg 
-            border border-slate-100 transition-all z-20 cursor-pointer
-            opacity-0 group-hover:opacity-100 group-focus-within:opacity-100
-            hover:bg-red-50 hover:scale-110 focus:ring-2 focus:ring-red-500 outline-none"
-            aria-label="Remove image"
-          >
-            <Trash2 size={14} />
-          </button>
+          <div className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center justify-center">
+            {isMasterBook || (!isOverridden && !inheritanceSource) ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUploadSuccess('');
+                }}
+                className="p-1.5 bg-white text-red-500 rounded-full shadow-lg 
+                  border border-slate-100 transition-all cursor-pointer
+                  hover:bg-red-50 hover:scale-110 focus:ring-2 focus:ring-red-500 outline-none"
+                aria-label="Remove image"
+              >
+                <Trash2 size={14} />
+              </button>
+            ) : (
+              (isOverridden || inheritanceSource) && (
+                <div className="bg-white rounded-full shadow-md border border-slate-100 px-1 py-0.5 flex items-center justify-center min-w-[28px] min-h-[28px]">
+                  <InheritanceIndicator
+                    inheritanceSource={inheritanceSource}
+                    isOverridden={isOverridden}
+                    onReset={onReset}
+                    isMasterBook={false}
+                    isEditing={false}
+                  />
+                </div>
+              )
+            )}
+          </div>
         )}
       </div>
     </div>
