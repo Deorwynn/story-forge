@@ -20,6 +20,12 @@ interface HeaderProps {
   displayPath: string | null;
   currentBookId?: string | null;
   portraitVersion: number;
+  isMasterBook: boolean;
+  portraitInheritance?: {
+    isOverridden: boolean;
+    inheritanceSource: number | 'global' | null;
+  };
+  onResetPortrait?: () => void;
 }
 
 const AutoInput = ({
@@ -99,6 +105,9 @@ export default function CharacterSheetHeader({
   portraitUrl,
   effectiveFrame,
   displayPath,
+  isMasterBook,
+  portraitInheritance,
+  onResetPortrait,
 }: HeaderProps) {
   const [first, setFirst] = useState(metadata.first_name || '');
   const [middle, setMiddle] = useState(metadata.middle_name || '');
@@ -203,6 +212,10 @@ export default function CharacterSheetHeader({
               onUpdatePortrait(newPath);
             }}
             onReposition={() => setIsFramerOpen(true)}
+            isMasterBook={isMasterBook}
+            isOverridden={portraitInheritance?.isOverridden}
+            inheritanceSource={portraitInheritance?.inheritanceSource}
+            onReset={onResetPortrait}
           />
         </div>
 

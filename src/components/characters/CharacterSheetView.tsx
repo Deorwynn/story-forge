@@ -338,6 +338,39 @@ export default function CharacterSheetView({
     return result;
   }, [project, activeBookId]);
 
+  const portraitInheritance = useMemo(() => {
+    // Safety check: if data isn't loaded, or we're in Volume 1, or no book is active
+    if (!localData || hideInheritance || !activeBookId) {
+      return { isOverridden: false, inheritanceSource: null };
+    }
+
+    const hasOverride =
+      !!localData.book_overrides?.[activeBookId]?.portrait_path;
+
+    return {
+      isOverridden: hasOverride,
+      inheritanceSource: 'global' as const,
+    };
+  }, [localData, activeBookId, hideInheritance]);
+
+  const handleResetPortrait = async () => {
+    if (!activeBookId || hideInheritance || !localData) return;
+
+    setLocalData((prev: any) => {
+      if (!prev) return prev;
+      const updated = { ...prev };
+      if (updated.book_overrides?.[activeBookId]) {
+        const newOverrides = { ...updated.book_overrides };
+        delete newOverrides[activeBookId].portrait_path;
+        delete newOverrides[activeBookId].zoom;
+        delete newOverrides[activeBookId].offset_x;
+        delete newOverrides[activeBookId].offset_y;
+        updated.book_overrides = newOverrides;
+      }
+      return updated;
+    });
+  };
+
   // ONLY return the hard loader if we have zero data (initial boot)
   if (!localData && isLoading) {
     return (
@@ -388,6 +421,9 @@ export default function CharacterSheetView({
           onSaveNameParts={handleNamePartUpdate}
           onUpdatePortrait={handlePortraitUpdate}
           onUpdateFraming={handleUpdateFraming}
+          isMasterBook={hideInheritance}
+          portraitInheritance={portraitInheritance}
+          onResetPortrait={handleResetPortrait}
         />
 
         <CharacterSheetIdentity
