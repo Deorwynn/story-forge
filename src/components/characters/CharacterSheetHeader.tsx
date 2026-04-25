@@ -13,7 +13,7 @@ interface HeaderProps {
     last: string,
     derivedFull: string
   ) => void;
-  onUpdatePortrait: (newPath: string) => void;
+  onUpdatePortrait: (newPath: string, oldPath?: string | null) => void;
   onUpdateFraming: (frame: PortraitFrame) => void;
   portraitUrl: string | null;
   effectiveFrame: PortraitFrame | null;
@@ -209,7 +209,7 @@ export default function CharacterSheetHeader({
             version={portraitVersion}
             framing={effectiveFrame}
             onUploadSuccess={(newPath) => {
-              onUpdatePortrait(newPath);
+              onUpdatePortrait(newPath, displayPath);
             }}
             onReposition={() => setIsFramerOpen(true)}
             isOverridden={portraitInheritance?.isOverridden ?? false}

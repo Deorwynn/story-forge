@@ -225,35 +225,57 @@ export default function CharacterSheetView({
     });
   };
 
-  const handlePortraitUpdate = async (newPath: string) => {
+  const handlePortraitUpdate = async (
+    newPath: string,
+    oldPath?: string | null
+  ) => {
     isInternalUpdating.current = true;
     setIsSaving(true);
     setShowSavingText(true);
 
+    const pathToDelete = oldPath || dataRef.current?.portrait_path;
+
+    // 2. Calculate Master status locally to avoid closure staleness
+    const firstBookId = project?.books?.[0]?.id;
+    const isMaster =
+      project?.type === 'standalone' || firstBookId === activeBookId;
+
     try {
+      if (newPath === '' && isMaster && pathToDelete) {
+        await invoke('delete_portrait_file', { path: pathToDelete });
+      }
+
       const defaults = { zoom: 1.0, offset_x: 50.0, offset_y: 50.0 };
+
       await invoke('update_character_portrait', {
         id: characterId,
-        path: newPath,
+        path: newPath === '' ? null : newPath,
         book_id: activeBookId,
         ...defaults,
       });
 
-      // 1. Get the fresh data from the DB
       const data = await invoke<Character>('get_character', {
         id: characterId,
       });
 
-      // 2. Update local state
-      setCharacter(data);
       setLocalData({ ...data });
+      setCharacter(data);
 
-      // 3. Update the Global App state so the Emergency Save isn't stale
+      // Update the "Saved" snapshot so the auto-save useEffect doesn't trigger
+      setLastSavedData(
+        JSON.stringify({
+          name: data.display_name,
+          metadata: data.metadata,
+          role: data.role,
+          book_overrides: data.book_overrides,
+          portrait_path: data.portrait_path,
+        })
+      );
+
       updateCharacter(data);
-
       setPortraitVersion((v) => v + 1);
     } catch (err) {
-      console.error('Failed to update portrait:', err);
+      console.error('❌ Portrait update failed:', err);
     } finally {
       isInternalUpdating.current = false;
       setIsSaving(false);
@@ -371,40 +393,64 @@ export default function CharacterSheetView({
   }, [localData, activeBookId, hideInheritance, project?.books]);
 
   const handleResetPortrait = async () => {
-    if (!activeBookId || hideInheritance || !localData) return;
+    if (!activeBookId || hideInheritance === undefined || !localData) return;
 
-    // 1. Calculate the new state object first
+    // 1. Target the path precisely using the current state
+    let pathToDelete: string | null = null;
     const updatedMetadata = { ...localData.metadata };
+    let updatedPortraitPath = localData.portrait_path;
 
-    if (updatedMetadata.portrait_data?.book_overrides) {
-      const newOverrides = { ...updatedMetadata.portrait_data.book_overrides };
+    if (hideInheritance) {
+      // MASTER: The file path sits in the root column
+      pathToDelete = localData.portrait_path;
+      updatedPortraitPath = null;
 
-      // Remove the override for the active book
-      delete newOverrides[activeBookId];
+      // Clear global metadata sync
+      if (updatedMetadata.portrait_data) {
+        updatedMetadata.portrait_data.global_value = {
+          path: '',
+          zoom: 1.0,
+          offset_x: 50.0,
+          offset_y: 50.0,
+        };
+      }
+    } else {
+      // OVERRIDE: The file path sits in the book_overrides
+      pathToDelete =
+        updatedMetadata.portrait_data?.book_overrides?.[activeBookId]?.path ||
+        null;
 
-      updatedMetadata.portrait_data = {
-        ...updatedMetadata.portrait_data,
-        book_overrides: newOverrides,
-      };
+      if (updatedMetadata.portrait_data?.book_overrides) {
+        const newOverrides = {
+          ...updatedMetadata.portrait_data.book_overrides,
+        };
+        delete newOverrides[activeBookId];
+        updatedMetadata.portrait_data.book_overrides = newOverrides;
+      }
     }
 
     const updatedCharacter = {
       ...localData,
+      portrait_path: updatedPortraitPath,
       metadata: updatedMetadata,
     };
 
-    // 2. Update local UI state
+    // 2. Set Local State
     setLocalData(updatedCharacter);
 
-    // 3. Persist to SQLite immediately
     try {
       setIsSaving(true);
+      // 3. Update the Database Record
       await saveToBackend(updatedCharacter);
 
-      // 4. Force a version bump to refresh the image component
+      // 4. THE CLEANUP: Now that DB is safe, delete the file
+      if (pathToDelete && pathToDelete.trim() !== '') {
+        await invoke('delete_portrait_file', { path: pathToDelete });
+      }
+
       setPortraitVersion((v) => v + 1);
     } catch (err) {
-      console.error('Failed to persist portrait reset:', err);
+      console.error('Failed to reset portrait:', err);
     } finally {
       setIsSaving(false);
     }

@@ -297,6 +297,12 @@ pub async fn update_character_portrait(
 }
 
 #[tauri::command]
+pub async fn delete_portrait_file(app_handle: tauri::AppHandle, path: String) -> Result<(), String> {
+    crate::commands::media::internal_delete_asset_file(&app_handle, &path)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn delete_character(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
