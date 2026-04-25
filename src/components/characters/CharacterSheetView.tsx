@@ -233,16 +233,34 @@ export default function CharacterSheetView({
     setIsSaving(true);
     setShowSavingText(true);
 
-    const pathToDelete = oldPath || dataRef.current?.portrait_path;
-
     // 2. Calculate Master status locally to avoid closure staleness
     const firstBookId = project?.books?.[0]?.id;
     const isMaster =
       project?.type === 'standalone' || firstBookId === activeBookId;
 
+    const pathBeforeChange = oldPath || dataRef.current?.portrait_path;
+
     try {
-      if (newPath === '' && isMaster && pathToDelete) {
-        await invoke('delete_portrait_file', { path: pathToDelete });
+      if (pathBeforeChange && pathBeforeChange !== newPath) {
+        if (isMaster) {
+          console.log('🗑️ Vol 1: Purging master file:', pathBeforeChange);
+          await invoke('delete_portrait_file', { path: pathBeforeChange });
+        } else if (activeBookId) {
+          const currentOverridePath =
+            localData?.book_overrides?.[activeBookId]?.portrait_path;
+
+          const nestedOverridePath =
+            localData?.metadata?.portrait_data?.book_overrides?.[activeBookId]
+              ?.path;
+
+          const isExistingOverride =
+            currentOverridePath === pathBeforeChange ||
+            nestedOverridePath === pathBeforeChange;
+
+          if (isExistingOverride) {
+            await invoke('delete_portrait_file', { path: pathBeforeChange });
+          }
+        }
       }
 
       const defaults = { zoom: 1.0, offset_x: 50.0, offset_y: 50.0 };
