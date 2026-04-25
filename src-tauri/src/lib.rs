@@ -1201,6 +1201,7 @@ pub fn run() {
             commands::character_commands::get_character,
             commands::character_commands::update_character,
             commands::character_commands::update_character_portrait,
+            commands::character_commands::delete_portrait_file,
             commands::character_commands::delete_character,
             commands::character_commands::globalize_project_characters,
             commands::media::save_media_file,

@@ -225,35 +225,75 @@ export default function CharacterSheetView({
     });
   };
 
-  const handlePortraitUpdate = async (newPath: string) => {
+  const handlePortraitUpdate = async (
+    newPath: string,
+    oldPath?: string | null
+  ) => {
     isInternalUpdating.current = true;
     setIsSaving(true);
     setShowSavingText(true);
 
+    // 2. Calculate Master status locally to avoid closure staleness
+    const firstBookId = project?.books?.[0]?.id;
+    const isMaster =
+      project?.type === 'standalone' || firstBookId === activeBookId;
+
+    const pathBeforeChange = oldPath || dataRef.current?.portrait_path;
+
     try {
+      if (pathBeforeChange && pathBeforeChange !== newPath) {
+        if (isMaster) {
+          console.log('🗑️ Vol 1: Purging master file:', pathBeforeChange);
+          await invoke('delete_portrait_file', { path: pathBeforeChange });
+        } else if (activeBookId) {
+          const currentOverridePath =
+            localData?.book_overrides?.[activeBookId]?.portrait_path;
+
+          const nestedOverridePath =
+            localData?.metadata?.portrait_data?.book_overrides?.[activeBookId]
+              ?.path;
+
+          const isExistingOverride =
+            currentOverridePath === pathBeforeChange ||
+            nestedOverridePath === pathBeforeChange;
+
+          if (isExistingOverride) {
+            await invoke('delete_portrait_file', { path: pathBeforeChange });
+          }
+        }
+      }
+
       const defaults = { zoom: 1.0, offset_x: 50.0, offset_y: 50.0 };
+
       await invoke('update_character_portrait', {
         id: characterId,
-        path: newPath,
+        path: newPath === '' ? null : newPath,
         book_id: activeBookId,
         ...defaults,
       });
 
-      // 1. Get the fresh data from the DB
       const data = await invoke<Character>('get_character', {
         id: characterId,
       });
 
-      // 2. Update local state
-      setCharacter(data);
       setLocalData({ ...data });
+      setCharacter(data);
 
-      // 3. Update the Global App state so the Emergency Save isn't stale
+      // Update the "Saved" snapshot so the auto-save useEffect doesn't trigger
+      setLastSavedData(
+        JSON.stringify({
+          name: data.display_name,
+          metadata: data.metadata,
+          role: data.role,
+          book_overrides: data.book_overrides,
+          portrait_path: data.portrait_path,
+        })
+      );
+
       updateCharacter(data);
-
       setPortraitVersion((v) => v + 1);
     } catch (err) {
-      console.error('Failed to update portrait:', err);
+      console.error('❌ Portrait update failed:', err);
     } finally {
       isInternalUpdating.current = false;
       setIsSaving(false);
@@ -339,36 +379,99 @@ export default function CharacterSheetView({
   }, [project, activeBookId]);
 
   const portraitInheritance = useMemo(() => {
-    // Safety check: if data isn't loaded, or we're in Volume 1, or no book is active
-    if (!localData || hideInheritance || !activeBookId) {
+    // 1. Dig into the actual path where Rust saves the data
+    const portraitData = localData?.metadata?.portrait_data;
+    const overrides = portraitData?.book_overrides || {};
+
+    if (!localData || hideInheritance || !activeBookId || !project?.books) {
       return { isOverridden: false, inheritanceSource: null };
     }
 
-    const hasOverride =
-      !!localData.book_overrides?.[activeBookId]?.portrait_path;
+    // 2. Check if CURRENT book has an override in the portrait_data blob
+    // Note: Rust saves the path inside a 'path' field within the PortraitFrame object
+    const isOverridden = !!overrides[activeBookId]?.path;
 
-    return {
-      isOverridden: hasOverride,
-      inheritanceSource: 'global' as const,
-    };
-  }, [localData, activeBookId, hideInheritance]);
+    // 3. Find the Source
+    const currentIndex = project.books.findIndex((b) => b.id === activeBookId);
+    let inheritanceSource: number | 'global' = 'global';
+
+    for (let i = currentIndex - 1; i >= 0; i--) {
+      const bookId = project.books[i].id;
+
+      // Check the nested metadata path for previous books
+      const pathAtThisVolume = overrides[bookId]?.path;
+
+      if (pathAtThisVolume) {
+        inheritanceSource = i + 1;
+        break;
+      }
+    }
+
+    return { isOverridden, inheritanceSource };
+  }, [localData, activeBookId, hideInheritance, project?.books]);
 
   const handleResetPortrait = async () => {
-    if (!activeBookId || hideInheritance || !localData) return;
+    if (!activeBookId || hideInheritance === undefined || !localData) return;
 
-    setLocalData((prev: any) => {
-      if (!prev) return prev;
-      const updated = { ...prev };
-      if (updated.book_overrides?.[activeBookId]) {
-        const newOverrides = { ...updated.book_overrides };
-        delete newOverrides[activeBookId].portrait_path;
-        delete newOverrides[activeBookId].zoom;
-        delete newOverrides[activeBookId].offset_x;
-        delete newOverrides[activeBookId].offset_y;
-        updated.book_overrides = newOverrides;
+    // 1. Target the path precisely using the current state
+    let pathToDelete: string | null = null;
+    const updatedMetadata = { ...localData.metadata };
+    let updatedPortraitPath = localData.portrait_path;
+
+    if (hideInheritance) {
+      // MASTER: The file path sits in the root column
+      pathToDelete = localData.portrait_path;
+      updatedPortraitPath = null;
+
+      // Clear global metadata sync
+      if (updatedMetadata.portrait_data) {
+        updatedMetadata.portrait_data.global_value = {
+          path: '',
+          zoom: 1.0,
+          offset_x: 50.0,
+          offset_y: 50.0,
+        };
       }
-      return updated;
-    });
+    } else {
+      // OVERRIDE: The file path sits in the book_overrides
+      pathToDelete =
+        updatedMetadata.portrait_data?.book_overrides?.[activeBookId]?.path ||
+        null;
+
+      if (updatedMetadata.portrait_data?.book_overrides) {
+        const newOverrides = {
+          ...updatedMetadata.portrait_data.book_overrides,
+        };
+        delete newOverrides[activeBookId];
+        updatedMetadata.portrait_data.book_overrides = newOverrides;
+      }
+    }
+
+    const updatedCharacter = {
+      ...localData,
+      portrait_path: updatedPortraitPath,
+      metadata: updatedMetadata,
+    };
+
+    // 2. Set Local State
+    setLocalData(updatedCharacter);
+
+    try {
+      setIsSaving(true);
+      // 3. Update the Database Record
+      await saveToBackend(updatedCharacter);
+
+      // 4. THE CLEANUP: Now that DB is safe, delete the file
+      if (pathToDelete && pathToDelete.trim() !== '') {
+        await invoke('delete_portrait_file', { path: pathToDelete });
+      }
+
+      setPortraitVersion((v) => v + 1);
+    } catch (err) {
+      console.error('Failed to reset portrait:', err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // ONLY return the hard loader if we have zero data (initial boot)
