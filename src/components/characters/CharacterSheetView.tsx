@@ -243,8 +243,7 @@ export default function CharacterSheetView({
     try {
       if (pathBeforeChange && pathBeforeChange !== newPath) {
         if (isMaster) {
-          console.log('🗑️ Vol 1: Purging master file:', pathBeforeChange);
-          await invoke('delete_portrait_file', { path: pathBeforeChange });
+          await invoke('delete_image_file', { path: pathBeforeChange });
         } else if (activeBookId) {
           const currentOverridePath =
             localData?.book_overrides?.[activeBookId]?.portrait_path;
@@ -258,7 +257,7 @@ export default function CharacterSheetView({
             nestedOverridePath === pathBeforeChange;
 
           if (isExistingOverride) {
-            await invoke('delete_portrait_file', { path: pathBeforeChange });
+            await invoke('delete_image_file', { path: pathBeforeChange });
           }
         }
       }
@@ -463,7 +462,7 @@ export default function CharacterSheetView({
 
       // 4. THE CLEANUP: Now that DB is safe, delete the file
       if (pathToDelete && pathToDelete.trim() !== '') {
-        await invoke('delete_portrait_file', { path: pathToDelete });
+        await invoke('delete_image_file', { path: pathToDelete });
       }
 
       setPortraitVersion((v) => v + 1);
