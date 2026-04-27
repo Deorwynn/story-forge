@@ -26,7 +26,6 @@ export const NewCharacterForm = ({
   const isFormValid = firstName.trim() !== '';
 
   const handleSubmit = async (e: React.FormEvent) => {
-    console.log('Sending to Rust:', role);
     e.preventDefault();
     if (!isFormValid) return;
 

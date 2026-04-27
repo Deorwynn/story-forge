@@ -68,6 +68,7 @@ export default function EditProjectForm({
   );
   const [previewKey, setPreviewKey] = useState(Date.now());
   const [imageWasUploaded, setImageWasUploaded] = useState(false);
+  const [uploadedPath, setUploadedPath] = useState<string | null>(null);
 
   const [bookTitles, setBookTitles] = useState<string[]>(
     project.books?.map((b) => b.title) || [project.name]
@@ -110,7 +111,6 @@ export default function EditProjectForm({
         cover_path: coverPath || null,
       };
 
-      console.log('SAVE CHECK - coverPath state is:', coverPath);
       // Update the main Project record
       await invoke('update_project', updatedPayload);
 
@@ -364,11 +364,21 @@ export default function EditProjectForm({
                         entityId={project.id}
                         currentPath={coverPath}
                         version={previewKey}
-                        onUploadSuccess={(newPath: string) => {
+                        onUploadSuccess={async (newPath: string) => {
+                          // If the user already uploaded something else this session, delete the old "temporary" file
+                          if (
+                            uploadedPath &&
+                            uploadedPath !== project.coverPath
+                          ) {
+                            await invoke('delete_image_file', {
+                              path: uploadedPath,
+                            });
+                          }
+
                           setCoverPath(newPath);
-                          setPreviewKey(Date.now());
+                          setUploadedPath(newPath);
                           setImageWasUploaded(true);
-                          console.log('New cover path set:', newPath);
+                          setPreviewKey(Date.now());
                         }}
                       />
                     </div>
@@ -671,14 +681,23 @@ export default function EditProjectForm({
           confirmLabel="Discard Changes"
           cancelLabel="Stay"
           variant="danger"
-          onConfirm={() => {
-            // 1. Reset the cover path to what it was in the project prop
+          onConfirm={async () => {
+            if (
+              imageWasUploaded &&
+              uploadedPath &&
+              uploadedPath !== project.coverPath
+            ) {
+              try {
+                await invoke('delete_image_file', { path: uploadedPath });
+              } catch (err) {
+                console.error('Failed to clean up orphaned asset:', err);
+              }
+            }
+
+            // 2. Reset states and close
             setCoverPath(project.coverPath || null);
-            // 2. Clear the "dirty" flag
             setImageWasUploaded(false);
-            // 3. Reset the preview key so ImageUpload re-renders the old path
-            setPreviewKey(Date.now());
-            // 4. Finally, close the form
+            setUploadedPath(null);
             onCancel();
           }}
           onCancel={() => setShowDiscardConfirm(false)}
