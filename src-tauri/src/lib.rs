@@ -1204,7 +1204,7 @@ pub fn run() {
             commands::character_commands::delete_image_file,
             commands::character_commands::delete_character,
             commands::character_commands::globalize_project_characters,
-            commands::media::save_media_file,
+            commands::media::upload_and_optimize_image,
             commands::media::delete_asset_file,
         ])
         .run(tauri::generate_context!())

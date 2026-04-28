@@ -78,11 +78,15 @@ export const ImageUpload = ({
         const filePath =
           typeof selected === 'string' ? selected : (selected as any).path;
 
-        const savedRelativePath: string = await invoke('save_media_file', {
-          sourcePath: filePath,
-          entityId: entityId,
-          collection: collection,
-        });
+        const savedRelativePath: string = await invoke(
+          'upload_and_optimize_image',
+          {
+            sourcePath: filePath,
+            entityId: entityId,
+            collection: collection,
+            entityType: 'portrait',
+          }
+        );
 
         onUploadSuccess(savedRelativePath);
 
