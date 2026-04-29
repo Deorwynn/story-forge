@@ -24,7 +24,8 @@ export default function WriteView() {
     `,
     editorProps: {
       attributes: {
-        class: 'prose prose-slate focus:outline-none max-w-3xl mx-auto py-20',
+        class:
+          'prose prose-slate focus:outline-none max-w-3xl mx-auto py-20 leading-snug',
       },
     },
   });

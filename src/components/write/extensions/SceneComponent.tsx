@@ -8,7 +8,7 @@ export default function SceneComponent({ node, editor, getPos }: any) {
     editor.state.selection.to <= getPos() + node.nodeSize;
 
   return (
-    <NodeViewWrapper className="scene-node-wrapper group relative mt-16 mb-8">
+    <NodeViewWrapper className="scene-node-wrapper group isolate block relative mt-16 mb-8">
       {/* THE DIVIDER */}
       <div
         contentEditable={false}
