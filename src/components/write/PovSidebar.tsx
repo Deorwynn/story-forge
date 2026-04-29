@@ -1,3 +1,7 @@
 export default function PovSidebar() {
-  return <></>;
+  return (
+    <>
+      <h1>POV Sidebar</h1>
+    </>
+  );
 }

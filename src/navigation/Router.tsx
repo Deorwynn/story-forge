@@ -1,3 +1,4 @@
+import WriteTab from '../components/write/WriteTab';
 import CharactersTab from '../components/characters/CharactersTab';
 
 export type ForgeView =
@@ -10,9 +11,7 @@ export type ForgeView =
   | 'Braindump';
 
 export const VIEW_COMPONENTS: Record<ForgeView, React.ComponentType<any>> = {
-  Write: () => (
-    <div className="p-8 text-slate-400">Write View (Coming Soon)</div>
-  ),
+  Write: WriteTab,
   Revisions: () => (
     <div className="p-8 text-slate-400">Revisions View (Coming Soon)</div>
   ),
