@@ -35,45 +35,31 @@ export const Scene = Node.create({
 
   addKeyboardShortcuts() {
     return {
+      // BACKSPACE: Forceful but controlled deletion
       Backspace: ({ editor }) => {
-        const { state } = editor;
-        const { selection } = state;
+        const { selection, doc } = editor.state;
         const { $from, empty } = selection;
 
-        // If we are at the very start of a scene and hit backspace
-        if (empty && $from.parentOffset === 0 && $from.depth > 1) {
-          // If the scene is empty, just delete it
-          if ($from.parent.content.size === 0) {
-            return editor.chain().deleteSelection().run();
-          }
+        // Only intervene if we are at the very start of the scene
+        if (!empty || $from.parentOffset !== 0) return false;
 
-          // Otherwise, let the default behavior (merging) happen
-          // "Confirmation Modal" to be implemented
-          return false;
-        }
-        return false;
+        // If this is the ONLY scene in the doc, don't delete it (prevents empty doc errors)
+        if (doc.childCount <= 1 && $from.depth === 1) return false;
+
+        return editor.chain().deleteNode('scene').focus().run();
       },
+
+      // ENTER: Simple breakout
       Enter: ({ editor }) => {
-        const { state } = editor;
-        const { selection } = state;
-        const { $from, empty } = selection;
+        const { $from, empty } = editor.state.selection;
+        if (!empty || $from.parent.content.size > 0) return false;
 
-        if (!empty) return false;
-
-        const isInsideScene = editor.isActive('scene');
-        if (!isInsideScene) return false;
-
-        const isCurrentLineEmpty = $from.parent.content.size === 0;
-
-        if (isCurrentLineEmpty) {
+        // If we are on an empty line inside a scene, "split" into a new one
+        if (editor.isActive('scene')) {
           return editor
             .chain()
-            .lift('scene')
-            .insertContent({
-              type: 'scene',
-              attrs: { title: 'New Scene' },
-              content: [{ type: 'paragraph' }],
-            })
+            .lift('scene') // Break out of the current one
+            .insertContent({ type: 'scene', content: [{ type: 'paragraph' }] })
             .focus()
             .run();
         }
